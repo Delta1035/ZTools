@@ -1,5 +1,7 @@
 import { app, globalShortcut, ipcMain, nativeTheme } from 'electron'
 import fs from 'fs'
+import os from 'os'
+import path from 'path'
 import type { PluginManager } from '../../managers/pluginManager'
 
 // 共享API（主程序和插件都能用）
@@ -7,7 +9,7 @@ import {
   OptimizedShortcutManager,
   WindowManager as NativeWindowManager
 } from '../../core/native/index.js'
-import { getCurrentShortcut, updateShortcut } from '../../appMain.js'
+import { getCurrentShortcut, getShortcutRegistrationError, updateShortcut } from '../../appMain.js'
 
 import dndManager from '../../core/dndManager.js'
 import doubleTapManager from '../../core/doubleTapManager.js'
@@ -391,8 +393,78 @@ export class SettingsAPI {
     console.log('[Settings] 设置主题:', theme)
   }
 
-  // 设置开机启动
+  /**
+   * 获取 Linux 桌面环境下的自启动配置文件路径（XDG autostart）。
+   * @returns {string} 位于用户主目录的 autostart desktop 文件绝对路径
+   */
+  private getLinuxAutostartFilePath(): string {
+    const configHome = process.env.XDG_CONFIG_HOME || path.join(os.homedir(), '.config')
+    return path.join(configHome, 'autostart', 'ztools.desktop')
+  }
+
+  /**
+   * 在 Linux 平台设置开机自启动（通过维护 ~/.config/autostart/ztools.desktop）。
+   * @param {boolean} enable 是否开启开机自启动
+   * @returns {void} 无返回值
+   */
+  private setLinuxLaunchAtLogin(enable: boolean): void {
+    const autostartFile = this.getLinuxAutostartFilePath()
+    const autostartDir = path.dirname(autostartFile)
+
+    if (enable) {
+      // 准备目录：确保 ~/.config/autostart 存在
+      if (!fs.existsSync(autostartDir)) {
+        fs.mkdirSync(autostartDir, { recursive: true })
+      }
+
+      // 确定可执行文件路径：优先使用 AppImage 路径，否则使用当前执行二进制
+      const execPath = process.env.APPIMAGE || process.execPath
+      const desktopEntry = [
+        '[Desktop Entry]',
+        'Type=Application',
+        'Version=1.0',
+        'Name=ZTools',
+        'Comment=ZTools 启动器',
+        `Exec="${execPath}" --silent`,
+        'Icon=ztools',
+        'Terminal=false',
+        'StartupNotify=false',
+        'Categories=Utility;'
+      ].join('\n')
+
+      // 写入自启动 desktop 文件
+      fs.writeFileSync(autostartFile, desktopEntry, 'utf-8')
+      console.log('[Settings] 已写入 Linux 自启动配置:', autostartFile)
+    } else {
+      // 资源清理：移除自启动文件
+      if (fs.existsSync(autostartFile)) {
+        fs.unlinkSync(autostartFile)
+        console.log('[Settings] 已移除 Linux 自启动配置:', autostartFile)
+      }
+    }
+  }
+
+  /**
+   * 获取 Linux 平台下的开机自启动状态。
+   * @returns {boolean} 是否已配置自启动文件
+   */
+  private getLinuxLaunchAtLogin(): boolean {
+    const autostartFile = this.getLinuxAutostartFilePath()
+    return fs.existsSync(autostartFile)
+  }
+
+  /**
+   * 设置开机启动状态。
+   * @param {boolean} enable 是否启用开机启动
+   * @returns {void} 无返回值
+   */
   public setLaunchAtLogin(enable: boolean): void {
+    if (process.platform === 'linux') {
+      this.setLinuxLaunchAtLogin(enable)
+      return
+    }
+
+    // Windows / macOS 使用原生登录项设置
     app.setLoginItemSettings({
       openAtLogin: enable,
       openAsHidden: true
@@ -400,8 +472,15 @@ export class SettingsAPI {
     console.log('[Settings] 设置开机启动:', enable)
   }
 
-  // 获取开机启动状态
+  /**
+   * 获取开机启动状态。
+   * @returns {boolean} 当前是否开启开机启动
+   */
   public getLaunchAtLogin(): boolean {
+    if (process.platform === 'linux') {
+      return this.getLinuxLaunchAtLogin()
+    }
+
     const settings = app.getLoginItemSettings()
     return settings.openAtLogin
   }
@@ -413,7 +492,7 @@ export class SettingsAPI {
       if (success) {
         return { success: true }
       } else {
-        return { success: false, error: '快捷键已被占用' }
+        return { success: false, error: getShortcutRegistrationError() ?? '快捷键已被占用' }
       }
     } catch (error: unknown) {
       console.error('[Settings] 更新快捷键失败:', error)
@@ -426,7 +505,7 @@ export class SettingsAPI {
     return getCurrentShortcut()
   }
 
-  private static readonly MODIFIER_NAMES = ['Command', 'Ctrl', 'Alt', 'Option', 'Shift']
+  private static readonly MODIFIER_NAMES = ['Command', 'Ctrl', 'Alt', 'Option', 'Shift', 'Super']
 
   // 判断是否为双击修饰键快捷键（如 "Command+Command"）
   private isDoubleTapShortcut(shortcut: string): boolean {

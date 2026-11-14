@@ -260,15 +260,16 @@ class DetachedWindowManager {
       // Windows 系统配置（与主窗口保持一致）
       else if (isWindows) {
         windowConfig.backgroundColor = '#00000000' // 完全透明，让 Mica 材质显示
-        // 设置插件窗口独立图标
-        if (options.logo) {
-          try {
-            windowConfig.icon = options.logo.startsWith('file:')
-              ? fileURLToPath(options.logo)
-              : options.logo
-          } catch (error) {
-            console.warn('[DetachedWindow] 设置窗口图标失败:', error)
-          }
+      }
+
+      // 设置插件独立窗口图标（Windows 与 Linux）
+      if (options.logo && (isWindows || process.platform === 'linux')) {
+        try {
+          windowConfig.icon = options.logo.startsWith('file:')
+            ? fileURLToPath(options.logo)
+            : options.logo
+        } catch (error) {
+          console.warn('[DetachedWindow] 设置窗口图标失败:', error)
         }
       }
 
@@ -355,6 +356,9 @@ class DetachedWindowManager {
 
           // 升级期间的 0 高度是临时状态，不得覆盖用户保存的窗口尺寸。
           if (!this.suppressedSizePersistenceWindows.has(windowId)) {
+            // 最大化/全屏状态触发的 resize 不算用户偏好尺寸，
+            // 否则会把屏幕工作区尺寸误存为下次 Ctrl+D 的“默认尺寸”。
+            if (win.isMaximized() || win.isFullScreen()) return
             this.schedulePersistWindowSize(
               windowId,
               pluginName,
@@ -364,6 +368,32 @@ class DetachedWindowManager {
           }
         }
       })
+
+      // 仅同步 pluginView 位置，不写数据库。
+      // 用于 maximize/unmaximize 兜底：Linux 上 WM 走 _NET_WM_STATE_MAXIMIZED_*
+      // 时常不触发 ConfigureNotify，resize 事件可能不发生，导致 pluginView
+      // 保持旧 bounds、看起来“窗口最大化但内容没放大”。
+      const syncPluginViewBoundsOnly = (): void => {
+        if (win.isDestroyed() || pluginView.webContents.isDestroyed()) return
+        const bounds = win.getContentBounds()
+        const currentTitlebarHeight = this.getTitlebarHeight()
+        pluginView.setBounds({
+          x: 0,
+          y: currentTitlebarHeight,
+          width: bounds.width,
+          height: Math.max(0, bounds.height - currentTitlebarHeight)
+        })
+      }
+
+      // maximize/unmaximize 兜底：WM 异步处理状态切换时，多次同步 pluginView，
+      // 确保 WM 完成几何变更后视图尺寸一定跟上。
+      const syncAfterStateChange = (): void => {
+        syncPluginViewBoundsOnly()
+        setImmediate(syncPluginViewBoundsOnly)
+        setTimeout(syncPluginViewBoundsOnly, 100)
+      }
+      win.on('maximize', syncAfterStateChange)
+      win.on('unmaximize', syncAfterStateChange)
 
       // 保存窗口信息
       const windowInfo: DetachedWindowInfo = {
@@ -573,10 +603,8 @@ class DetachedWindowManager {
     // 监听搜索框输入
     ipcMain.on('search-input', handleSearchInput)
 
-    // 监听双击标题栏（macOS 行为：最大化/还原）
-    if (process.platform === 'darwin') {
-      ipcMain.on('titlebar-dblclick', handleTitlebarDblClick)
-    }
+    // 监听双击标题栏（最大化/还原）
+    ipcMain.on('titlebar-dblclick', handleTitlebarDblClick)
 
     // 监听方向键事件
     ipcMain.on('send-arrow-key', handleSendArrowKey)
@@ -588,11 +616,9 @@ class DetachedWindowManager {
     win.once('closed', () => {
       ipcMain.off('titlebar-action', handleTitlebarAction)
       ipcMain.off('search-input', handleSearchInput)
+      ipcMain.off('titlebar-dblclick', handleTitlebarDblClick)
       ipcMain.off('send-arrow-key', handleSendArrowKey)
       ipcMain.off('show-plugin-menu', handleShowPluginMenu)
-      if (process.platform === 'darwin') {
-        ipcMain.off('titlebar-dblclick', handleTitlebarDblClick)
-      }
     })
   }
 

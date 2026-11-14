@@ -59,7 +59,7 @@ export interface WindowsShortcutInfo {
 }
 
 export interface FileLocationWindowInfo {
-  platform?: 'win32' | 'darwin'
+  platform?: 'win32' | 'darwin' | 'linux'
   kind?: 'windows-explorer' | 'windows-file-dialog' | 'mac-finder' | 'mac-file-dialog'
   preciseTarget?: boolean
   hwnd?: number
@@ -213,7 +213,7 @@ interface NativeAddon {
 
 interface WindowInfo {
   app: string // 应用名称（如 "Finder.app"）
-  platform?: 'win32' | 'darwin'
+  platform?: 'win32' | 'darwin' | 'linux'
   kind?: FileLocationWindowInfo['kind']
   preciseTarget?: boolean
   bundleId?: string // macOS 独有
@@ -458,14 +458,121 @@ export class WindowMonitor {
  */
 export class WindowManager {
   /**
+   * Linux X11 环境模拟键盘按键。
+   * @param key 要模拟的按键
+   * @param modifiers 修饰键列表
+   * @returns 是否模拟成功
+   */
+  private static simulateLinuxKey(key: string, ...modifiers: string[]): boolean {
+    try {
+      // 优先尝试使用已安装的 xdotool
+      const keyCombo = [...modifiers.map((m) => m.toLowerCase()), key.toLowerCase()].join('+')
+      const xdotoolResult = spawnSync('xdotool', ['key', keyCombo], { timeout: 1000 })
+      if (xdotoolResult.status === 0) {
+        return true
+      }
+    } catch {
+      // xdotool 不存在或调用失败时继续回退
+    }
+
+    try {
+      // 回退方案：通过 python3 调用系统 libXtst 发送 X11 合成按键事件
+      const pyScript = [
+        'import ctypes, sys',
+        'x11 = ctypes.cdll.LoadLibrary("libX11.so.6")',
+        'xtst = ctypes.cdll.LoadLibrary("libXtst.so.6")',
+        'd = x11.XOpenDisplay(None)',
+        'if not d: sys.exit(1)',
+        'mods = sys.argv[1].split(",") if sys.argv[1] else []',
+        'key = sys.argv[2]',
+        'mod_syms = {"ctrl": 0xffe3, "alt": 0xffe9, "shift": 0xffe1, "super": 0xffeb, "meta": 0xffe3}',
+        'mod_codes = [x11.XKeysymToKeycode(d, mod_syms[m]) for m in mods if m in mod_syms]',
+        'key_sym = ord(key.lower()) if len(key) == 1 else (0xff08 if key == "backspace" else 0xff0d if key == "enter" else ord(key[0]))',
+        'key_code = x11.XKeysymToKeycode(d, key_sym)',
+        'for mc in mod_codes: xtst.XTestFakeKeyEvent(d, mc, True, 0)',
+        'xtst.XTestFakeKeyEvent(d, key_code, True, 0)',
+        'xtst.XTestFakeKeyEvent(d, key_code, False, 0)',
+        'for mc in reversed(mod_codes): xtst.XTestFakeKeyEvent(d, mc, False, 0)',
+        'x11.XFlush(d)',
+        'x11.XCloseDisplay(d)'
+      ].join(';')
+
+      const modArg = modifiers.map((m) => m.toLowerCase()).join(',')
+      const res = spawnSync('python3', ['-c', pyScript, modArg, key], { timeout: 1500 })
+      return res.status === 0
+    } catch (err) {
+      console.warn('[Native] Linux simulateKey 失败:', err)
+      return false
+    }
+  }
+
+  /**
    * 获取当前激活的窗口信息
    * @returns 窗口信息对象
    * - macOS: { app, bundleId, pid, x, y, width, height, isFullscreen }
    * - Windows: { app, pid, x, y, width, height, className, hwnd, isFullscreen }
+   * - Linux: { app, pid, hwnd, title, x, y, width, height, isFullscreen }
    */
   static getActiveWindow(): ActiveWindowResult | null {
     if (platform === 'linux') {
-      return null
+      try {
+        // 通过 xprop 查询 X11 根窗口记录的当前活动窗口 ID
+        const activeWinOut = execSync('xprop -root _NET_ACTIVE_WINDOW', {
+          encoding: 'utf-8',
+          timeout: 1000,
+          stdio: ['ignore', 'pipe', 'ignore']
+        })
+        const match = activeWinOut.match(
+          /_NET_ACTIVE_WINDOW\(WINDOW\):\s*window\s*id\s*#\s*(0x[0-9a-fA-F]+)/
+        )
+        if (!match || !match[1] || match[1] === '0x0') {
+          return null
+        }
+
+        const winId = match[1]
+        // 查询该窗口的类名、进程 PID 与窗口标题
+        const propOut = execSync(`xprop -id ${winId} WM_CLASS _NET_WM_PID _NET_WM_NAME WM_NAME`, {
+          encoding: 'utf-8',
+          timeout: 1000,
+          stdio: ['ignore', 'pipe', 'ignore']
+        })
+
+        let app = 'unknown'
+        const classMatch = propOut.match(/WM_CLASS\([A-Z_]+\)\s*=\s*(?:"([^"]+)"|'([^']+)')/i)
+        if (classMatch) {
+          app = classMatch[1] || classMatch[2] || 'unknown'
+        }
+
+        let pid = 0
+        const pidMatch = propOut.match(/_NET_WM_PID\([A-Z_]+\)\s*=\s*(\d+)/i)
+        if (pidMatch) {
+          pid = parseInt(pidMatch[1], 10) || 0
+        }
+
+        let title = ''
+        const nameMatch = propOut.match(
+          /(?:_NET_WM_NAME|WM_NAME)\([A-Z_]+\)\s*=\s*(?:"([^"]+)"|'([^']+)')/i
+        )
+        if (nameMatch) {
+          title = nameMatch[1] || nameMatch[2] || ''
+        }
+
+        const hwnd = parseInt(winId, 16) || 0
+        return {
+          app,
+          pid,
+          hwnd,
+          title,
+          x: 0,
+          y: 0,
+          width: 0,
+          height: 0,
+          isFullscreen: false
+        }
+      } catch (err) {
+        console.debug('[Native] Linux getActiveWindow 查询失败:', err)
+        return null
+      }
     }
 
     const result = (addon as NativeAddon).getActiveWindow()
@@ -536,12 +643,12 @@ export class WindowManager {
   }
 
   /**
-   * 模拟粘贴操作（Command+V on macOS, Ctrl+V on Windows）
+   * 模拟粘贴操作（Command+V on macOS, Ctrl+V on Windows / Linux）
    * @returns {boolean} 是否成功
    */
   static simulatePaste(): boolean {
     if (platform === 'linux') {
-      return false
+      return this.simulateLinuxKey('v', 'ctrl')
     }
     return (addon as NativeAddon).simulatePaste()
   }
@@ -566,7 +673,7 @@ export class WindowManager {
    */
   static simulateKeyboardTap(key: string, ...modifiers: string[]): boolean {
     if (platform === 'linux') {
-      return false
+      return this.simulateLinuxKey(key, ...modifiers)
     }
 
     if (typeof key !== 'string' || !key) {

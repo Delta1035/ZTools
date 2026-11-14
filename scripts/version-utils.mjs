@@ -100,7 +100,11 @@ export function generateDownloadLinksMarkdown(downloadUrl, version) {
 
   links += '#### macOS 10.13+ (Intel)：\n\n'
   links += `- DMG：[ZTools-${version}-mac-x64.dmg](${downloadUrl}/ZTools-${version}-mac-x64.dmg)\n`
-  links += `- ZIP：[ZTools-${version}-mac-x64.zip](${downloadUrl}/ZTools-${version}-mac-x64.zip)\n`
+  links += `- ZIP：[ZTools-${version}-mac-x64.zip](${downloadUrl}/ZTools-${version}-mac-x64.zip)\n\n`
+
+  links += '#### Linux (x64)：\n\n'
+  links += `- AppImage：[ZTools-${version}-linux-x86_64.AppImage](${downloadUrl}/ZTools-${version}-linux-x86_64.AppImage)\n`
+  links += `- DEB：[ZTools_${version}_amd64.deb](${downloadUrl}/ZTools_${version}_amd64.deb)\n`
 
   return links
 }

@@ -63,6 +63,13 @@ body::-webkit-scrollbar {
   --bg-color: #f4f4f4;
 }
 
+/* Linux 下默认使用普通背景色及卡片控件背景 */
+.os-linux:root {
+  --bg-color: #f4f4f4;
+  --card-bg: white;
+  --control-bg: white;
+}
+
 /* Windows 下根据 data-material 属性应用不同材质样式 */
 .os-windows[data-material='mica'] {
   --bg-color: transparent;
@@ -160,6 +167,13 @@ body::-webkit-scrollbar {
   /* Windows 暗色模式下默认使用普通背景色 */
   .os-windows:root {
     --bg-color: #303133;
+  }
+
+  /* Linux 暗色模式下使用暗色背景与卡片控件背景 */
+  .os-linux:root {
+    --bg-color: #303133;
+    --card-bg: #3a3a3c;
+    --control-bg: #48484a;
   }
 
   /* Windows 暗色模式下根据 data-material 属性应用不同材质样式 */

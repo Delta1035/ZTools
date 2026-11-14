@@ -9,6 +9,7 @@ import {
   type UwpPackageChangeEvent
 } from './core/uwpPackageMonitor'
 import {
+  getLinuxApplicationPaths,
   getMacApplicationPaths,
   getWindowsFlatScanPaths,
   getWindowsRecursiveScanPaths
@@ -64,6 +65,10 @@ class AppWatcher {
 
     if (process.platform === 'darwin') {
       return getMacApplicationPaths()
+    }
+
+    if (process.platform === 'linux') {
+      return getLinuxApplicationPaths()
     }
 
     return []
@@ -128,6 +133,22 @@ class AppWatcher {
       }
 
       return true
+    }
+
+    if (process.platform === 'linux') {
+      // .desktop 文件始终监听（无论位于顶层还是子目录）
+      if (basename.endsWith('.desktop')) {
+        return false
+      }
+
+      // 放行 watch 目录下的子目录，便于 chokidar 下钻（Flatpak 导出目录、子包目录等）；
+      // 其余文件（.png、.directory、install 缓存等）忽略。
+      try {
+        return !fs.statSync(filePath).isDirectory()
+      } catch {
+        // stat 失败（如 unlink 事件时文件已不存在）：不忽略，交由上层按 .desktop 后缀判断
+        return false
+      }
     }
 
     return true
@@ -212,6 +233,12 @@ class AppWatcher {
     })
   }
 
+  /**
+   * 绑定底层文件系统监听器的事件处理器。
+   *
+   * @param watcher 文件系统监听器实例。
+   * @returns 无返回值。
+   */
   private bindWatcherEvents(watcher: FSWatcher): void {
     // 监听添加事件
     if (process.platform === 'win32') {
@@ -234,6 +261,42 @@ class AppWatcher {
       })
     }
 
+    if (process.platform === 'linux') {
+      // Linux: 监听 .desktop 文件（deb/Flatpak 安装会在应用目录新增 .desktop 文件）
+      watcher.on('add', (filePath: string) => {
+        if (filePath.endsWith('.desktop')) {
+          console.log('[AppWatcher] 检测到新的 .desktop 文件:', filePath)
+          this.notifyChange('add', filePath)
+        }
+      })
+    }
+
+    // 监听内容修改事件。
+    // 编辑已有 .desktop / .lnk / .app（如修改 NoDisplay、Exec 等）触发 change 事件，刷新缓存。
+    // 按平台过滤对应后缀，避免无关事件干扰。
+    if (process.platform === 'win32') {
+      watcher.on('change', (filePath: string) => {
+        if (filePath.endsWith('.lnk')) {
+          console.log('[AppWatcher] 检测到快捷方式修改:', filePath)
+          this.notifyChange('add', filePath)
+        }
+      })
+    } else if (process.platform === 'darwin') {
+      watcher.on('change', (filePath: string) => {
+        if (filePath.endsWith('.app')) {
+          console.log('[AppWatcher] 检测到应用目录修改:', filePath)
+          this.notifyChange('add', filePath)
+        }
+      })
+    } else if (process.platform === 'linux') {
+      watcher.on('change', (filePath: string) => {
+        if (filePath.endsWith('.desktop')) {
+          console.log('[AppWatcher] 检测到 .desktop 文件修改:', filePath)
+          this.notifyChange('add', filePath)
+        }
+      })
+    }
+
     // 监听删除事件
     if (process.platform === 'win32') {
       // Windows: 监听 .lnk 文件删除
@@ -250,6 +313,16 @@ class AppWatcher {
       watcher.on('unlinkDir', (filePath: string) => {
         if (filePath.endsWith('.app')) {
           console.log('[AppWatcher] 检测到应用删除:', filePath)
+          this.notifyChange('remove', filePath)
+        }
+      })
+    }
+
+    if (process.platform === 'linux') {
+      // Linux: 监听 .desktop 文件删除（卸载 deb/Flatpak 会移除 .desktop 文件）
+      watcher.on('unlink', (filePath: string) => {
+        if (filePath.endsWith('.desktop')) {
+          console.log('[AppWatcher] 检测到 .desktop 文件删除:', filePath)
           this.notifyChange('remove', filePath)
         }
       })

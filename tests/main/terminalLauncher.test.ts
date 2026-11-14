@@ -10,6 +10,12 @@ const { mockDbGet, mockSpawn, mockExecFile } = vi.hoisted(() => ({
 }))
 
 vi.mock('child_process', () => ({ spawn: mockSpawn, execFile: mockExecFile }))
+vi.mock('../../src/main/core/native', () => ({
+  CuiProcess: {
+    launchPowerShell: vi.fn().mockResolvedValue(true),
+    launchCmd: vi.fn().mockResolvedValue(true)
+  }
+}))
 vi.mock('../../src/main/api/shared/database', () => ({
   default: { dbGet: mockDbGet, dbPut: vi.fn() }
 }))
@@ -33,10 +39,11 @@ describe('getPresetOptions', () => {
     expect(opts.map((o) => o.value)).toEqual(['default', 'ghostty', 'iterm2', 'custom'])
   })
 
-  it('Linux 含 系统默认/gnome-terminal/konsole/xterm/自定义', () => {
+  it('Linux 含 系统默认/ptyxis/gnome-terminal/konsole/xterm/自定义', () => {
     const opts = getPresetOptions('linux')
     expect(opts.map((o) => o.value)).toEqual([
       'default',
+      'ptyxis',
       'gnome-terminal',
       'konsole',
       'xterm',

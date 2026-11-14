@@ -1,5 +1,4 @@
-import { UiohookKey } from 'uiohook-napi'
-import globalInputManager from './globalInputManager.js'
+import globalInputManager, { getModifierKeycodes } from './globalInputManager.js'
 
 interface DoubleTapHandler {
   modifier: string
@@ -8,16 +7,20 @@ interface DoubleTapHandler {
 
 const INPUT_CONSUMER = 'double-tap'
 
-// uiohook keycode → 修饰键名称映射
-const MODIFIER_KEYCODES: Record<number, string> = {
-  [UiohookKey.Meta]: 'Command',
-  [UiohookKey.MetaRight]: 'Command',
-  [UiohookKey.Ctrl]: 'Ctrl',
-  [UiohookKey.CtrlRight]: 'Ctrl',
-  [UiohookKey.Alt]: 'Alt',
-  [UiohookKey.AltRight]: 'Alt',
-  [UiohookKey.Shift]: 'Shift',
-  [UiohookKey.ShiftRight]: 'Shift'
+// uiohook keycode → 修饰键名称映射。
+// 原生模块惰性加载，故延迟构建并缓存；模块不可用时为空表，双击功能自然失效。
+let modifierKeycodesCache: Record<number, string> | null = null
+
+/**
+ * 获取修饰键 keycode 到名称的映射表。
+ *
+ * @returns 修饰键映射字典。
+ */
+function modifierKeycodes(): Record<number, string> {
+  if (!modifierKeycodesCache) {
+    modifierKeycodesCache = getModifierKeycodes()
+  }
+  return modifierKeycodesCache
 }
 
 // macOS 下 Option 与 Alt 是同一物理键，统一规范化为 'Alt'
@@ -187,14 +190,15 @@ class DoubleTapManager {
 
     this.pressedKeycodes.add(e.keycode)
 
-    const modifier = MODIFIER_KEYCODES[e.keycode]
+    const keycodes = modifierKeycodes()
+    const modifier = keycodes[e.keycode]
     if (modifier) {
       if (!this.downTimeByKeycode.has(e.keycode)) {
         this.downTimeByKeycode.set(e.keycode, Date.now())
       }
       // 修饰键按下且无其他修饰键在按时，重置组合键标记
       const otherModifierHeld = [...this.pressedKeycodes].some(
-        (k) => k !== e.keycode && MODIFIER_KEYCODES[k]
+        (k) => k !== e.keycode && keycodes[k]
       )
       if (!otherModifierHeld) {
         this.nonModifierPressed = false
@@ -219,7 +223,7 @@ class DoubleTapManager {
       this.resolveModifierKeysReleasedWaiters()
     }
 
-    const modifier = MODIFIER_KEYCODES[e.keycode]
+    const modifier = modifierKeycodes()[e.keycode]
     if (!modifier) {
       return
     }
@@ -268,8 +272,9 @@ class DoubleTapManager {
    * 判断当前是否仍有修饰键处于按下状态。
    */
   private hasPressedModifierKey(): boolean {
+    const keycodes = modifierKeycodes()
     for (const keycode of this.pressedKeycodes) {
-      if (MODIFIER_KEYCODES[keycode]) {
+      if (keycodes[keycode]) {
         return true
       }
     }

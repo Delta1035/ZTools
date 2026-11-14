@@ -46,6 +46,11 @@ jobs:
             arch: x64
             build_cmd: pnpm run build:win
             signing_identity: ''
+          # Linux x64
+          - os: ubuntu-latest
+            arch: x64
+            build_cmd: pnpm run build:linux:x64
+            signing_identity: ''
 
     steps:
       - name: Check out git repository
@@ -164,6 +169,8 @@ jobs:
             dist/*.zip
             dist/*.yml
             dist/*.blockmap
+            dist/*.AppImage
+            dist/*.deb
           if-no-files-found: warn
 
   release:
@@ -245,6 +252,12 @@ jobs:
           name: artifact-windows-latest-x64
           path: dist/windows
 
+      - name: Download Linux artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: artifact-ubuntu-latest-x64
+          path: dist/linux
+
       # 合并 macOS 双架构元数据，并规范化 Windows 与 macOS 的更新清单。
       - name: Generate update info
         env:
@@ -276,6 +289,8 @@ jobs:
             dist/mac-arm64/*.dmg
             dist/mac-arm64/*.zip
             dist/mac-arm64/*.blockmap
+            dist/linux/*.AppImage
+            dist/linux/*.deb
             dist/release/*.yml
 
       - name: Sync release metadata to ZTools server

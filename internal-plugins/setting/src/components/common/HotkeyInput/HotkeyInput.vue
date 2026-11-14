@@ -110,13 +110,13 @@ function getModifierName(code: string): string {
   switch (code) {
     case 'MetaLeft':
     case 'MetaRight':
-      return 'Command'
+      return props.platform === 'darwin' ? 'Command' : 'Super'
     case 'ControlLeft':
     case 'ControlRight':
       return 'Ctrl'
     case 'AltLeft':
     case 'AltRight':
-      return props.platform === 'win32' ? 'Alt' : 'Option'
+      return props.platform === 'darwin' ? 'Option' : 'Alt'
     case 'ShiftLeft':
     case 'ShiftRight':
       return 'Shift'
@@ -206,9 +206,9 @@ function handleKeyDown(e: KeyboardEvent): void {
   const isModifierKey = MODIFIER_CODES.includes(e.code)
 
   const keys: string[] = []
-  if (e.metaKey) keys.push('Command')
+  if (e.metaKey) keys.push(props.platform === 'darwin' ? 'Command' : 'Super')
   if (e.ctrlKey) keys.push('Ctrl')
-  if (e.altKey) keys.push(props.platform === 'win32' ? 'Alt' : 'Option')
+  if (e.altKey) keys.push(props.platform === 'darwin' ? 'Option' : 'Alt')
   if (e.shiftKey) keys.push('Shift')
 
   if (!isModifierKey) {
@@ -258,9 +258,9 @@ function handleKeyUp(e: KeyboardEvent): void {
     }
 
     const activeModifiers: string[] = []
-    if (e.metaKey) activeModifiers.push('Command')
+    if (e.metaKey) activeModifiers.push(props.platform === 'darwin' ? 'Command' : 'Super')
     if (e.ctrlKey) activeModifiers.push('Ctrl')
-    if (e.altKey) activeModifiers.push(props.platform === 'win32' ? 'Alt' : 'Option')
+    if (e.altKey) activeModifiers.push(props.platform === 'darwin' ? 'Option' : 'Alt')
     if (e.shiftKey) activeModifiers.push('Shift')
 
     // 只在所有修饰键都释放时才计为一次 tap

@@ -66,6 +66,7 @@ import chokidar from 'chokidar'
 import path from 'path'
 import appsAPI from '../../src/main/api/renderer/commands'
 import {
+  getLinuxApplicationPaths,
   getWindowsFlatScanPaths,
   getWindowsRecursiveScanPaths
 } from '../../src/main/utils/systemPaths'
@@ -184,6 +185,45 @@ describe('AppWatcher 双 watcher 接线', () => {
     }
 
     flatWatcher.__emit('add', path.join(getWindowsFlatScanPaths()[0], 'notes.txt'))
+    vi.advanceTimersByTime(1000)
+    expect(appsAPI.refreshAppsCache).not.toHaveBeenCalled()
+  })
+
+  it('Linux: 监听 .desktop 的 add/unlink/change 路由到防抖 refreshAppsCache', () => {
+    Object.defineProperty(process, 'platform', { value: 'linux', configurable: true })
+    appWatcher.init({} as never)
+
+    const watchMock = vi.mocked(chokidar.watch)
+    // Linux 下扁平 watcher 为空，仅创建 1 个递归 watcher
+    expect(watchMock).toHaveBeenCalledTimes(1)
+    const recursiveWatcher = watchMock.mock.results[0].value as MockWatcherApi
+    const desktopPath = path.join(getLinuxApplicationPaths()[0], 'test-app.desktop')
+
+    // 触发 add
+    recursiveWatcher.__emit('add', desktopPath)
+    expect(appsAPI.refreshAppsCache).not.toHaveBeenCalled()
+    vi.advanceTimersByTime(1000)
+    expect(appsAPI.refreshAppsCache).toHaveBeenCalledTimes(1)
+
+    // 触发 change
+    recursiveWatcher.__emit('change', desktopPath)
+    vi.advanceTimersByTime(1000)
+    expect(appsAPI.refreshAppsCache).toHaveBeenCalledTimes(2)
+
+    // 触发 unlink
+    recursiveWatcher.__emit('unlink', desktopPath)
+    vi.advanceTimersByTime(1000)
+    expect(appsAPI.refreshAppsCache).toHaveBeenCalledTimes(3)
+  })
+
+  it('Linux: 非 .desktop 文件事件不触发刷新', () => {
+    Object.defineProperty(process, 'platform', { value: 'linux', configurable: true })
+    appWatcher.init({} as never)
+
+    const watchMock = vi.mocked(chokidar.watch)
+    const recursiveWatcher = watchMock.mock.results[0].value as MockWatcherApi
+
+    recursiveWatcher.__emit('add', path.join(getLinuxApplicationPaths()[0], 'readme.txt'))
     vi.advanceTimersByTime(1000)
     expect(appsAPI.refreshAppsCache).not.toHaveBeenCalled()
   })

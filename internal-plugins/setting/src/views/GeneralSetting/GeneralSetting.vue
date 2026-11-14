@@ -150,12 +150,12 @@ const terminalOptions = computed(() => {
 
 // 默认快捷键（根据平台区分文案）
 const defaultHotkey = computed(() => {
-  return platform.value === 'win32' ? 'Alt+Z' : 'Option+Z'
+  return platform.value === 'win32' || platform.value === 'linux' ? 'Alt+Z' : 'Option+Z'
 })
 
 // 快捷键预设选项（根据平台）
 const hotkeyPresets = computed(() => {
-  if (platform.value === 'win32') {
+  if (platform.value === 'win32' || platform.value === 'linux') {
     return [
       { label: 'Alt + Space', value: 'Alt+Space' },
       { label: 'Ctrl + Space', value: 'Ctrl+Space' }

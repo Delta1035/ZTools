@@ -95,11 +95,25 @@ function runCli(command: string, args: string[]): Promise<boolean> {
 // 注：macOS 默认预设直接使用 applescript build（Terminal.app 始终存在，无需回退链），
 // 故此处不再保留 launchDefaultMac；Linux/Windows 需要回退链，保留对应 handler。
 
+/**
+ * 启动 Linux 系统默认终端回退链。
+ *
+ * @param path 目标工作目录路径。
+ * @returns 成功启动终端返回 true，全部候选失败返回 false。
+ */
 async function launchDefaultLinux(path: string): Promise<boolean> {
+  // 优先遵循用户配置的默认终端（xdg-terminal-exec 是 Default Terminal 规范实现）；
+  // 现代 GNOME（如 Ubuntu 24.10+ / 26.04+）以 Ptyxis / kgx 取代 GNOME Terminal
   return (
-    (await runCli('exo-open', ['--launch', 'TerminalEmulator', '--working-directory', path])) ||
+    (await runCli('xdg-terminal-exec', [`--dir=${path}`])) ||
+    (await runCli('ptyxis', [`--working-directory=${path}`])) ||
     (await runCli('gnome-terminal', [`--working-directory=${path}`])) ||
-    (await runCli('xterm', ['-cd', path]))
+    (await runCli('kgx', [`--working-directory=${path}`])) ||
+    (await runCli('konsole', ['--workdir', path])) ||
+    (await runCli('xterm', ['-cd', path])) ||
+    (await runCli('exo-open', ['--launch', 'TerminalEmulator', '--working-directory', path])) ||
+    // Debian alternatives 包装器：各终端工作目录参数不统一，仅作最后兜底
+    (await runCli('x-terminal-emulator', []))
   )
 }
 
@@ -161,6 +175,11 @@ const MAC_PRESETS: PresetEntry[] = [
 
 const LINUX_PRESETS: PresetEntry[] = [
   { id: 'default', label: '系统默认', preset: { type: 'handler', run: launchDefaultLinux } },
+  {
+    id: 'ptyxis',
+    label: 'Ptyxis',
+    preset: { type: 'cli', command: 'ptyxis', args: [`--working-directory={path}`] }
+  },
   {
     id: 'gnome-terminal',
     label: 'GNOME Terminal',

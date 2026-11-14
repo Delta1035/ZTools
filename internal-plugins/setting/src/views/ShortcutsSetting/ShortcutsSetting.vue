@@ -56,6 +56,7 @@ const DEFAULT_BUILTIN_SHORTCUTS_ENABLED: BuiltInShortcutConfig = {
 // 获取平台信息
 const isMac = ref(false)
 const isWindows = ref(false)
+const isLinux = ref(false)
 
 // 基础内置快捷键配置（使用 MOD 占位符表示 Cmd/Ctrl）
 const baseBuiltInShortcuts: GlobalShortcut[] = [
@@ -119,8 +120,7 @@ const baseBuiltInShortcuts: GlobalShortcut[] = [
 
 // 根据平台转换快捷键修饰符
 const builtInAppShortcuts = computed<GlobalShortcut[]>(() => {
-  const modifier = isMac.value ? 'Command' : isWindows.value ? 'Ctrl' : ''
-  if (!modifier) return []
+  const modifier = isMac.value ? 'Command' : 'Ctrl'
 
   return baseBuiltInShortcuts.map((item) => {
     if (item.shortcut === 'DEVTOOLS') {
@@ -881,6 +881,8 @@ onMounted(() => {
 
   isMac.value = platform.includes('mac') || userAgent.includes('mac')
   isWindows.value = platform.includes('win') || userAgent.includes('windows')
+  isLinux.value =
+    platform.includes('linux') || userAgent.includes('linux') || (!isMac.value && !isWindows.value)
 
   void loadShortcuts()
 

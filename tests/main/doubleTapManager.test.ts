@@ -79,6 +79,11 @@ describe('doubleTapManager 双击修饰键检测', () => {
     vi.resetModules()
     vi.useFakeTimers()
     mockUIOhook.removeAllListeners()
+    const globalInputManager = await import('../../src/main/core/globalInputManager')
+    globalInputManager.setUiohookModuleForTesting({
+      uIOhook: mockUIOhook,
+      UiohookKey
+    } as never)
     doubleTapManager = (await import('../../src/main/core/doubleTapManager')).default
     callback = vi.fn()
     doubleTapManager.register('Ctrl', callback)

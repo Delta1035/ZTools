@@ -57,7 +57,7 @@ interface ClipboardItem {
 // 窗口激活信息
 interface WindowActivationInfo {
   app?: string
-  platform?: 'win32' | 'darwin'
+  platform?: 'win32' | 'darwin' | 'linux'
   kind?: 'windows-explorer' | 'windows-file-dialog' | 'mac-finder' | 'mac-file-dialog'
   preciseTarget?: boolean
   bundleId?: string
@@ -200,12 +200,17 @@ class ClipboardManager {
     return this.currentWindow
   }
 
-  // 激活指定应用
+  /**
+   * 激活指定窗口信息对应的应用程序窗口。
+   * @param {WindowActivationInfo} info 目标窗口的激活信息
+   * @returns {boolean} 窗口激活是否成功
+   */
   public activateApp(info: WindowActivationInfo): boolean {
     try {
-      const identifier = os.platform() === 'win32' ? info.pid : info.bundleId
+      // 提取平台适用的窗口标识符：macOS 使用 bundleId，Windows 与 Linux 使用 pid 或 hwnd
+      const identifier = os.platform() === 'darwin' ? info.bundleId : info.pid || info.hwnd
       if (!identifier) {
-        console.error('[Clipboard] 无法激活应用：缺少必要的标识符 (bundleId 或 pid)')
+        console.error('[Clipboard] 无法激活应用：缺少必要的标识符 (bundleId、pid 或 hwnd)')
         return false
       }
       const success = WindowManager.activateWindow(identifier)
