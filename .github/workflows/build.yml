@@ -37,7 +37,7 @@ jobs:
             # electron-builder expects the certificate subject without its type prefix.
             signing_identity: 'Zhengzhou Zhongsen Yunke Information Technology Co., Ltd. (4S4HH8375U)'
           # macOS ARM64 (Apple Silicon)
-          - os: macos-14
+          - os: macos-latest
             arch: arm64
             build_cmd: pnpm run build:mac:arm64
             signing_identity: 'Zhengzhou Zhongsen Yunke Information Technology Co., Ltd. (4S4HH8375U)'
@@ -116,7 +116,7 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Prepare App Store Connect API key
-        if: startsWith(matrix.os, 'macos')
+        if: startsWith(matrix.os, 'macos') && secrets.APPLE_API_KEY != ''
         shell: bash
         env:
           APPLE_API_KEY_BASE64: ${{ secrets.APPLE_API_KEY }}
@@ -134,17 +134,23 @@ jobs:
 
       # 统一构建命令
       - name: Build and Package
+        shell: bash
         env:
           CSC_LINK: ${{ startsWith(matrix.os, 'macos') && secrets.MAC_CSC_LINK || '' }}
           CSC_KEY_PASSWORD: ${{ startsWith(matrix.os, 'macos') && secrets.MAC_CSC_KEY_PASSWORD || '' }}
-          CSC_NAME: ${{ matrix.signing_identity }}
+          CSC_NAME: ${{ secrets.MAC_CSC_LINK != '' && matrix.signing_identity || '' }}
           APPLE_API_KEY_ID: ${{ startsWith(matrix.os, 'macos') && secrets.APPLE_API_KEY_ID || '' }}
           APPLE_API_ISSUER: ${{ startsWith(matrix.os, 'macos') && secrets.APPLE_API_ISSUER || '' }}
           APPLE_TEAM_ID: ${{ startsWith(matrix.os, 'macos') && secrets.APPLE_TEAM_ID || '' }}
-        run: ${{ matrix.build_cmd }}
+        run: |
+          if [[ "${{ matrix.os }}" == macos* && "${{ secrets.APPLE_API_KEY }}" == "" ]]; then
+            ${{ matrix.build_cmd }} -c.mac.notarize=false -c.mac.identity=null
+          else
+            ${{ matrix.build_cmd }}
+          fi
 
       - name: Verify macOS signature and notarization
-        if: startsWith(matrix.os, 'macos')
+        if: startsWith(matrix.os, 'macos') && secrets.APPLE_API_KEY != ''
         shell: bash
         run: |
           app_path="$(find dist -maxdepth 3 -type d -name '*.app' -print -quit)"
@@ -243,7 +249,7 @@ jobs:
       - name: Download macOS ARM64 artifact
         uses: actions/download-artifact@v4
         with:
-          name: artifact-macos-14-arm64
+          name: artifact-macos-latest-arm64
           path: dist/mac-arm64
 
       - name: Download Windows artifact
@@ -294,6 +300,7 @@ jobs:
             dist/release/*.yml
 
       - name: Sync release metadata to ZTools server
+        if: secrets.ZTOOLS_RELEASE_SYNC_TOKEN != ''
         env:
           GITHUB_TOKEN: ${{ github.token }}
           RELEASE_VERSION: ${{ steps.release_meta.outputs.version }}
