@@ -25,6 +25,9 @@ jobs:
   build:
     name: Build on ${{ matrix.os }} (${{ matrix.arch }})
     runs-on: ${{ matrix.os }}
+    env:
+      HAS_APPLE_API_KEY: ${{ secrets.APPLE_API_KEY != '' && 'true' || 'false' }}
+      HAS_CSC_LINK: ${{ secrets.MAC_CSC_LINK != '' && 'true' || 'false' }}
 
     strategy:
       fail-fast: false
@@ -116,7 +119,7 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Prepare App Store Connect API key
-        if: startsWith(matrix.os, 'macos') && secrets.APPLE_API_KEY != ''
+        if: startsWith(matrix.os, 'macos') && env.HAS_APPLE_API_KEY == 'true'
         shell: bash
         env:
           APPLE_API_KEY_BASE64: ${{ secrets.APPLE_API_KEY }}
@@ -138,19 +141,19 @@ jobs:
         env:
           CSC_LINK: ${{ startsWith(matrix.os, 'macos') && secrets.MAC_CSC_LINK || '' }}
           CSC_KEY_PASSWORD: ${{ startsWith(matrix.os, 'macos') && secrets.MAC_CSC_KEY_PASSWORD || '' }}
-          CSC_NAME: ${{ secrets.MAC_CSC_LINK != '' && matrix.signing_identity || '' }}
+          CSC_NAME: ${{ env.HAS_CSC_LINK == 'true' && matrix.signing_identity || '' }}
           APPLE_API_KEY_ID: ${{ startsWith(matrix.os, 'macos') && secrets.APPLE_API_KEY_ID || '' }}
           APPLE_API_ISSUER: ${{ startsWith(matrix.os, 'macos') && secrets.APPLE_API_ISSUER || '' }}
           APPLE_TEAM_ID: ${{ startsWith(matrix.os, 'macos') && secrets.APPLE_TEAM_ID || '' }}
         run: |
-          if [[ "${{ matrix.os }}" == macos* && "${{ secrets.APPLE_API_KEY }}" == "" ]]; then
+          if [[ "${{ matrix.os }}" == macos* && "${{ env.HAS_APPLE_API_KEY }}" != "true" ]]; then
             ${{ matrix.build_cmd }} -c.mac.notarize=false -c.mac.identity=null
           else
             ${{ matrix.build_cmd }}
           fi
 
       - name: Verify macOS signature and notarization
-        if: startsWith(matrix.os, 'macos') && secrets.APPLE_API_KEY != ''
+        if: startsWith(matrix.os, 'macos') && env.HAS_APPLE_API_KEY == 'true'
         shell: bash
         run: |
           app_path="$(find dist -maxdepth 3 -type d -name '*.app' -print -quit)"
@@ -184,6 +187,8 @@ jobs:
     needs: build
     if: ${{ github.event_name != 'workflow_dispatch' || inputs.publish_release }}
     runs-on: ubuntu-latest
+    env:
+      HAS_SYNC_TOKEN: ${{ secrets.ZTOOLS_RELEASE_SYNC_TOKEN != '' && 'true' || 'false' }}
     outputs:
       tag: ${{ steps.release_meta.outputs.tag }}
 
@@ -300,7 +305,7 @@ jobs:
             dist/release/*.yml
 
       - name: Sync release metadata to ZTools server
-        if: secrets.ZTOOLS_RELEASE_SYNC_TOKEN != ''
+        if: env.HAS_SYNC_TOKEN == 'true'
         env:
           GITHUB_TOKEN: ${{ github.token }}
           RELEASE_VERSION: ${{ steps.release_meta.outputs.version }}
