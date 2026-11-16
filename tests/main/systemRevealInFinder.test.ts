@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { EventEmitter } from 'node:events'
 import { promises as fs } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
@@ -14,6 +15,10 @@ const electronMocks = vi.hoisted(() => ({
   }
 }))
 
+const childProcessMocks = vi.hoisted(() => ({
+  spawn: vi.fn()
+}))
+
 vi.mock('electron', () => ({
   app: {},
   clipboard: {},
@@ -21,6 +26,10 @@ vi.mock('electron', () => ({
   Menu: {},
   nativeImage: {},
   shell: electronMocks.shell
+}))
+
+vi.mock('child_process', () => ({
+  spawn: childProcessMocks.spawn
 }))
 
 vi.mock('../../src/main/core/appData/appDataPaths', () => ({
@@ -49,6 +58,17 @@ beforeEach(() => {
   systemAPI = new SystemAPI()
   electronMocks.shell.openPath.mockReset()
   electronMocks.shell.showItemInFolder.mockReset()
+  childProcessMocks.spawn.mockReset()
+  childProcessMocks.spawn.mockImplementation(() => {
+    const child = new EventEmitter() as EventEmitter & {
+      unref: () => void
+      stderr: EventEmitter
+    }
+    child.unref = vi.fn()
+    child.stderr = new EventEmitter()
+    queueMicrotask(() => child.emit('spawn'))
+    return child
+  })
 })
 
 afterEach(async () => {
@@ -63,11 +83,16 @@ describe('SystemAPI.revealInFinder', () => {
 
     await systemAPI.revealInFinder(root)
 
-    expect(electronMocks.shell.openPath).toHaveBeenCalledWith(root)
+    expect(childProcessMocks.spawn).toHaveBeenCalledWith(
+      'nautilus',
+      ['--new-window', root],
+      expect.objectContaining({ detached: true, stdio: 'ignore' })
+    )
+    expect(electronMocks.shell.openPath).not.toHaveBeenCalled()
     expect(electronMocks.shell.showItemInFolder).not.toHaveBeenCalled()
   })
 
-  it('reveals a file without opening it as a directory', async () => {
+  it('opens the parent directory for an ASAR plugin file on Linux', async () => {
     const root = await fs.mkdtemp(path.join(os.tmpdir(), 'ztools-reveal-'))
     tempDirs.push(root)
     const filePath = path.join(root, 'plugin.asar')
@@ -75,15 +100,28 @@ describe('SystemAPI.revealInFinder', () => {
 
     await systemAPI.revealInFinder(filePath)
 
-    expect(electronMocks.shell.showItemInFolder).toHaveBeenCalledWith(filePath)
-    expect(electronMocks.shell.openPath).not.toHaveBeenCalled()
+    expect(childProcessMocks.spawn).toHaveBeenCalledWith(
+      'nautilus',
+      ['--new-window', root],
+      expect.objectContaining({ detached: true, stdio: 'ignore' })
+    )
+    expect(electronMocks.shell.showItemInFolder).not.toHaveBeenCalled()
   })
 
-  it('propagates file manager errors so the setting page can show feedback', async () => {
+  it('propagates file manager startup errors so the setting page can show feedback', async () => {
     const root = await fs.mkdtemp(path.join(os.tmpdir(), 'ztools-reveal-'))
     tempDirs.push(root)
-    electronMocks.shell.openPath.mockResolvedValue('无法启动文件管理器')
+    childProcessMocks.spawn.mockImplementation(() => {
+      const child = new EventEmitter() as EventEmitter & {
+        unref: () => void
+        stderr: EventEmitter
+      }
+      child.unref = vi.fn()
+      child.stderr = new EventEmitter()
+      queueMicrotask(() => child.emit('error', new Error('没有默认文件管理器')))
+      return child
+    })
 
-    await expect(systemAPI.revealInFinder(root)).rejects.toThrow('无法启动文件管理器')
+    await expect(systemAPI.revealInFinder(root)).rejects.toThrow('Linux 文件管理器未实现或无法启动')
   })
 })
