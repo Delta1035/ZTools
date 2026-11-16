@@ -29,6 +29,7 @@ import superPanelManager from '../core/superPanelManager'
 import { applyWindowMaterial, getDefaultWindowMaterial } from '../utils/windowUtils'
 import pluginManager from './pluginManager'
 import { prepareMacPanelForShow } from '../utils/macPanelSpace'
+import modalDialogBlurHideSuppression from '../utils/modalDialogBlurHideSuppression'
 import {
   normalizeCompactMainWindowHeader,
   resolveMainWindowHeaderHeight
@@ -37,7 +38,6 @@ import {
 // 窗口材质类型
 type WindowMaterial = 'mica' | 'acrylic' | 'none'
 const WINDOW_BLUR_DRAG_INPUT_CONSUMER = 'window-blur-drag'
-const DEFAULT_MODAL_DIALOG_BLUR_HIDE_RELEASE_DELAY_MS = 500
 
 /**
  * 应用快捷键触发时携带的文件输入
@@ -102,10 +102,6 @@ class WindowManager {
   private lastFocusTarget: 'mainWindow' | 'plugin' | null = null // 窗口隐藏前的焦点状态
   private isRestoringFocus: boolean = false // 是否正在恢复焦点状态（防止 focus 事件监听器干扰）
   private suppressBlurHide: boolean = false // 临时抑制 blur 事件隐藏窗口（文件关联打开等场景）
-  // 原生模态对话框关闭前后可能发出排队的 blur/mouseup 事件。
-  private modalDialogBlurHideSuppressed: boolean = false
-  private modalDialogBlurHideReleaseTimer: ReturnType<typeof setTimeout> | null = null
-  private modalDialogBlurHideSuppressionDepth: number = 0
   private lastBlurHideTime: number = 0 // blur 导致隐藏窗口的时间戳（用于解决托盘点击竞态）
   private blurHideTimer: ReturnType<typeof setTimeout> | null = null // Linux blur 延迟隐藏定时器
   private isPreparingMacSpace = false // 透明迁移阶段不恢复输入焦点，正式显示时再恢复
@@ -195,7 +191,7 @@ class WindowManager {
     return (
       process.env.ZTOOLS_E2E === '1' ||
       this.suppressBlurHide ||
-      this.modalDialogBlurHideSuppressed ||
+      modalDialogBlurHideSuppression.isSuppressed() ||
       this.transientBlurSuppressTimer !== null
     )
   }
@@ -220,41 +216,6 @@ class WindowManager {
       this.transientBlurSuppressTimer = null
       this.transientBlurSuppressUntil = 0
     }, durationMs)
-  }
-
-  private beginModalDialogBlurHideSuppression(): void {
-    if (this.modalDialogBlurHideReleaseTimer) {
-      clearTimeout(this.modalDialogBlurHideReleaseTimer)
-      this.modalDialogBlurHideReleaseTimer = null
-    }
-
-    this.modalDialogBlurHideSuppressionDepth += 1
-    this.modalDialogBlurHideSuppressed = true
-  }
-
-  private endModalDialogBlurHideSuppression(releaseDelayMs: number): void {
-    this.modalDialogBlurHideSuppressionDepth = Math.max(
-      0,
-      this.modalDialogBlurHideSuppressionDepth - 1
-    )
-    if (this.modalDialogBlurHideSuppressionDepth > 0) return
-
-    if (this.modalDialogBlurHideReleaseTimer) {
-      clearTimeout(this.modalDialogBlurHideReleaseTimer)
-    }
-
-    this.modalDialogBlurHideReleaseTimer = setTimeout(() => {
-      this.modalDialogBlurHideSuppressed = false
-      this.modalDialogBlurHideReleaseTimer = null
-    }, releaseDelayMs)
-  }
-
-  private isPromiseLike<T>(value: T | PromiseLike<T>): value is PromiseLike<T> {
-    return (
-      value !== null &&
-      (typeof value === 'object' || typeof value === 'function') &&
-      typeof (value as { then?: unknown }).then === 'function'
-    )
   }
 
   private deferBlurHideUntilMouseUp(): void {
@@ -1200,6 +1161,13 @@ class WindowManager {
     this.startAutoBackToSearchTimer()
   }
 
+  /**
+   * 在原生模态对话框期间抑制窗口失焦自动隐藏。
+   * @param callback 需要在抑制状态下执行的回调。
+   * @param releaseDelayMs 对话框结束后延迟释放抑制的毫秒数。
+   * @returns 回调的同步结果或异步结果。
+   * @throws 回调抛出的异常会在清理抑制状态后继续抛出。
+   */
   public withBlurHideSuppressed<T>(
     callback: () => PromiseLike<T>,
     releaseDelayMs?: number
@@ -1207,42 +1175,20 @@ class WindowManager {
   public withBlurHideSuppressed<T>(callback: () => T, releaseDelayMs?: number): T
   public withBlurHideSuppressed<T>(
     callback: () => T | PromiseLike<T>,
-    releaseDelayMs: number = DEFAULT_MODAL_DIALOG_BLUR_HIDE_RELEASE_DELAY_MS
+    releaseDelayMs?: number
   ): T | Promise<T> {
-    this.beginModalDialogBlurHideSuppression()
-    try {
-      const result = callback()
-      if (this.isPromiseLike(result)) {
-        return Promise.resolve(result).finally(() => {
-          this.endModalDialogBlurHideSuppression(releaseDelayMs)
-        })
-      }
-
-      this.endModalDialogBlurHideSuppression(releaseDelayMs)
-      return result
-    } catch (error) {
-      this.endModalDialogBlurHideSuppression(releaseDelayMs)
-      throw error
-    }
+    return modalDialogBlurHideSuppression.withSuppressed(callback, releaseDelayMs)
   }
 
-  public withBlurHideSuppressedSync<T>(
-    callback: () => T,
-    releaseDelayMs: number = DEFAULT_MODAL_DIALOG_BLUR_HIDE_RELEASE_DELAY_MS
-  ): T {
-    this.beginModalDialogBlurHideSuppression()
-    try {
-      const result = callback()
-      if (this.isPromiseLike(result)) {
-        throw new TypeError('withBlurHideSuppressedSync callback must not return a Promise')
-      }
-
-      this.endModalDialogBlurHideSuppression(releaseDelayMs)
-      return result
-    } catch (error) {
-      this.endModalDialogBlurHideSuppression(releaseDelayMs)
-      throw error
-    }
+  /**
+   * 在同步原生模态对话框期间抑制窗口失焦自动隐藏。
+   * @param callback 必须同步返回的回调。
+   * @param releaseDelayMs 对话框结束后延迟释放抑制的毫秒数。
+   * @returns 回调的同步结果。
+   * @throws 回调返回 Promise 或主动抛错时抛出异常。
+   */
+  public withBlurHideSuppressedSync<T>(callback: () => T, releaseDelayMs?: number): T {
+    return modalDialogBlurHideSuppression.withSuppressedSync(callback, releaseDelayMs)
   }
 
   /**
