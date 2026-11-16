@@ -159,13 +159,15 @@ export class SystemAPI {
   }
 
   /**
-   * 在文件管理器中显示文件位置（跨平台）
+   * 在文件管理器中显示文件或打开目录（跨平台）。
+   * @param filePath 要显示或打开的文件系统路径
+   * @returns 文件管理器调用完成后结束的 Promise
+   * @throws 路径为空、目录打开失败或系统文件管理器调用失败时抛出异常
    * macOS: 在 Finder 中显示并选中文件
    * Windows: 在资源管理器中显示并选中文件
-   * Linux: 在文件管理器中显示并选中文件
+   * Linux: 在文件管理器中显示并选中文件，或直接打开目录
    *
-   * Electron 的 shell.showItemInFolder() 是跨平台的 API，
-   * 会自动根据操作系统选择相应的文件管理器
+   * 文件夹不能依赖 showItemInFolder() 定位：Linux 下部分文件管理器不会对目录执行任何操作。
    */
   public async revealInFinder(filePath: string): Promise<void> {
     try {
@@ -173,8 +175,24 @@ export class SystemAPI {
         throw new Error('文件路径不能为空')
       }
 
-      // Electron 的 shell.showItemInFolder() 是跨平台的
-      // 在 macOS 上会自动使用 Finder，Windows 上使用资源管理器，Linux 上使用文件管理器
+      // 先判断实体类型，确保目录使用“打开”而不是“定位文件”。
+      let isDirectory = false
+      try {
+        isDirectory = (await fs.stat(filePath)).isDirectory()
+      } catch {
+        // 路径不存在或暂时无权访问时，保留原有的文件定位行为，让系统处理错误。
+      }
+
+      if (isDirectory) {
+        // shell.showItemInFolder() 在 Linux 的部分文件管理器中无法打开目录。
+        const errorMessage = await shell.openPath(filePath)
+        if (errorMessage) {
+          throw new Error(errorMessage)
+        }
+        return
+      }
+
+      // 文件继续使用定位接口，以便在文件管理器中选中具体文件。
       shell.showItemInFolder(filePath)
     } catch (error: unknown) {
       const platformName =
