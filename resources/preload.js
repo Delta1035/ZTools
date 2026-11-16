@@ -1535,7 +1535,8 @@ window.ztools = {
     },
 
     // ==================== 定时任务 API ====================
-    getScheduledTasks: async () => await electron.ipcRenderer.invoke('internal:get-scheduled-tasks'),
+    getScheduledTasks: async () =>
+      await electron.ipcRenderer.invoke('internal:get-scheduled-tasks'),
     saveScheduledTask: async (draft) =>
       await electron.ipcRenderer.invoke('internal:save-scheduled-task', draft),
     deleteScheduledTask: async (id) =>

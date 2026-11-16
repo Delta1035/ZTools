@@ -1,5 +1,6 @@
 import { OpenDialogOptions, OpenDialogReturnValue, BrowserWindow, dialog } from 'electron'
 import os from 'os'
+import modalDialogBlurHideSuppression from './modalDialogBlurHideSuppression'
 
 /**
  * 检测是否为 Windows 11
@@ -90,6 +91,8 @@ export function applyWindowMaterial(
  * @param parentWindow 父窗口
  * @param options 文件窗口选项
  * @param errorMessage 未选择任何文件时，返回错误信息
+ * @returns 文件选择结果；取消选择或没有路径时返回失败信息。
+ * @throws 原生文件选择对话框抛出的异常会继续向上抛出。
  */
 export async function openDialog(
   parentWindow: BrowserWindow,
@@ -100,7 +103,11 @@ export async function openDialog(
   data?: OpenDialogReturnValue
   error?: string
 }> {
-  const result = await dialog.showOpenDialog(parentWindow, options)
+  // 原生对话框会使主窗口失焦，期间必须阻止 Linux 的延迟失焦隐藏。
+  const result = await modalDialogBlurHideSuppression.withSuppressed(() =>
+    dialog.showOpenDialog(parentWindow, options)
+  )
+  // 对话框返回后恢复父窗口可见性，兼容取消选择和成功选择两种路径。
   if (!parentWindow.isDestroyed()) {
     parentWindow.show()
   }

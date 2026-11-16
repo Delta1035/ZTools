@@ -1,3 +1,4 @@
+import { spawn } from 'child_process'
 import { app, clipboard, ipcMain, Menu, nativeImage, shell } from 'electron'
 import { promises as fs } from 'fs'
 import path from 'path'
@@ -11,6 +12,64 @@ import { getAvatarPath } from '../../core/appData/appDataPaths'
 const AVATAR_DIR = getAvatarPath()
 const SEARCH_WALLPAPER_MAX_WIDTH = 1920
 const SEARCH_WALLPAPER_JPEG_QUALITY = 85
+
+const LINUX_FILE_MANAGER_CANDIDATES = [
+  { command: 'nautilus', args: ['--new-window'] },
+  { command: 'dolphin', args: [] },
+  { command: 'thunar', args: [] },
+  { command: 'nemo', args: [] },
+  { command: 'pcmanfm', args: [] },
+  { command: 'pcmanfm-qt', args: [] },
+  { command: 'caja', args: [] },
+  { command: 'konqueror', args: [] }
+] as const
+
+/**
+ * 使用 Linux 文件管理器打开目录，并将失败状态反馈给调用方。
+ * @param directoryPath 要打开的目录路径
+ * @returns 文件管理器处理完成后结束的 Promise
+ * @throws Linux 文件管理器未实现或所有候选程序启动失败时抛出异常
+ */
+function openLinuxDirectory(directoryPath: string): Promise<void> {
+  return new Promise<void>((resolve, reject) => {
+    let candidateIndex = 0
+    let lastError: Error | null = null
+
+    const tryNextFileManager = (): void => {
+      const candidate = LINUX_FILE_MANAGER_CANDIDATES[candidateIndex++]
+      if (!candidate) {
+        reject(
+          new Error(`Linux 文件管理器未实现或无法启动${lastError ? `：${lastError.message}` : ''}`)
+        )
+        return
+      }
+
+      const child = spawn(candidate.command, [...candidate.args, directoryPath], {
+        detached: true,
+        stdio: 'ignore'
+      })
+      let candidateSettled = false
+
+      // 文件管理器交给桌面会话继续运行，主进程只等待启动结果。
+      child.once('spawn', () => {
+        if (candidateSettled) return
+        candidateSettled = true
+        child.unref()
+        resolve()
+      })
+
+      // 当前候选不存在时继续尝试下一个桌面环境的文件管理器。
+      child.once('error', (error) => {
+        if (candidateSettled) return
+        candidateSettled = true
+        lastError = error
+        tryNextFileManager()
+      })
+    }
+
+    tryNextFileManager()
+  })
+}
 
 /**
  * 系统集成API - 主程序专用
@@ -159,13 +218,15 @@ export class SystemAPI {
   }
 
   /**
-   * 在文件管理器中显示文件位置（跨平台）
+   * 在文件管理器中定位文件或打开其所在目录（跨平台）。
+   * @param filePath 要定位或打开的文件系统路径
+   * @returns 文件管理器调用完成后结束的 Promise
+   * @throws 路径为空、目录打开失败或系统文件管理器调用失败时抛出异常
    * macOS: 在 Finder 中显示并选中文件
    * Windows: 在资源管理器中显示并选中文件
-   * Linux: 在文件管理器中显示并选中文件
+   * Linux: 直接打开目录；文件则打开其所在目录
    *
-   * Electron 的 shell.showItemInFolder() 是跨平台的 API，
-   * 会自动根据操作系统选择相应的文件管理器
+   * 文件夹不能依赖 showItemInFolder() 定位：Linux 下部分文件管理器不会对目录执行任何操作。
    */
   public async revealInFinder(filePath: string): Promise<void> {
     try {
@@ -173,8 +234,33 @@ export class SystemAPI {
         throw new Error('文件路径不能为空')
       }
 
-      // Electron 的 shell.showItemInFolder() 是跨平台的
-      // 在 macOS 上会自动使用 Finder，Windows 上使用资源管理器，Linux 上使用文件管理器
+      // 先判断实体类型，确保目录使用“打开”而不是“定位文件”。
+      let fileStats: Awaited<ReturnType<typeof fs.stat>> | null = null
+      try {
+        fileStats = await fs.stat(filePath)
+      } catch {
+        // 路径不存在或暂时无权访问时，保留路径信息，让后续文件管理器调用返回错误。
+      }
+
+      if (process.platform === 'linux') {
+        // Linux 文件管理器不能直接处理 .asar，文件路径改为打开其父目录。
+        const isAsarFile = path.extname(filePath).toLowerCase() === '.asar'
+        const directoryPath =
+          fileStats?.isDirectory() && !isAsarFile ? filePath : path.dirname(filePath)
+        await openLinuxDirectory(directoryPath)
+        return
+      }
+
+      if (fileStats?.isDirectory()) {
+        // macOS 和 Windows 继续使用 Electron 的跨平台目录打开接口。
+        const errorMessage = await shell.openPath(filePath)
+        if (errorMessage) {
+          throw new Error(errorMessage)
+        }
+        return
+      }
+
+      // 文件继续使用定位接口，以便在文件管理器中选中具体文件。
       shell.showItemInFolder(filePath)
     } catch (error: unknown) {
       const platformName =
