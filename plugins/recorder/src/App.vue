@@ -1,66 +1,70 @@
 <template>
-  <main class="recorder-app">
+  <div class="px-4">
     <a-alert
-      v-if="store.errorText"
+      v-if="store.errorText?.length"
       type="error"
+      :message="store.errorText"
       banner
       closable
-      :message="store.errorText"
       @close="store.errorText = ''"
     />
-    <a-alert v-if="isRecording || countdown > 0" type="info" :message="statusText" />
-    <a-spin :spinning="store.loading" tip="格式转换中...">
-      <section class="toolbar-row">
-        <div class="toolbar-main">
+    <a-alert v-if="infoText?.length" :message="infoText" type="info" />
+    <a-spin tip="格式转换中..." size="large" :spinning="store.loading">
+      <div class="py-4 flex justify-space-between">
+        <div class="flex">
           <a-button-group>
             <a-tooltip placement="bottom" title="开始或停止">
               <a-button
                 id="switchBtn"
-                type="primary"
-                danger
                 :disabled="store.disableOperation || store.loading"
                 @click="onRecordClick"
               >
-                <template #icon><VideoCameraOutlined /></template>
+                <template #icon>
+                  <RecordIcon v-if="store.recorderState == 'inactive'" />
+                  <StopIcon v-else />
+                </template>
               </a-button>
             </a-tooltip>
             <a-tooltip placement="bottom" title="暂停或恢复">
-              <a-button :disabled="!isRecording || store.loading" @click="togglePause">
+              <a-button
+                :disabled="store.recorderState == 'inactive' || store.loading"
+                @click="togglePause"
+              >
                 <template #icon>
-                  <PlayCircleOutlined v-if="store.recorderState === 'paused'" />
-                  <PauseCircleOutlined v-else />
+                  <PlayIcon v-if="store.recorderState == 'paused'" />
+                  <PauseIcon v-else />
                 </template>
               </a-button>
             </a-tooltip>
           </a-button-group>
-
-          <a-tooltip placement="bottom" title="快捷键开始不受此影响，0 秒不延迟">
-            <span class="delay-control">
-              延迟
-              <a-input-number
-                id="inputDelay"
-                v-model:value="store.delayStart"
-                :min="0"
-                :max="10"
-                :disabled="isRecording || store.disableOperation || store.loading"
-                @change="saveDelay"
-              />
-            </span>
+          <a-tooltip class="ml-3" placement="bottom" title="快捷键开始不受此影响 0s不延迟">
+            延迟
+            <a-input-number
+              id="inputDelay"
+              v-model:value="store.delayStart"
+              class="width-4"
+              :min="0"
+              :max="10"
+              :disabled="
+                store.recorderState != 'inactive' || store.disableOperation || store.loading
+              "
+              @change="saveDelay"
+            />
           </a-tooltip>
-
-          <a-button-group class="source-controls">
-            <a-tooltip placement="bottom" title="选择录制窗口（新建或关闭窗口需刷新）">
+          <a-button-group>
+            <a-tooltip placement="bottom" title="选择录制窗口(新建或关闭窗口需刷新)">
               <a-select
-                id="source"
                 v-model:value="store.selectedVideoSource"
+                class="ml-3 width-20"
+                :disabled="
+                  store.recorderState != 'inactive' || store.disableOperation || store.loading
+                "
                 :options="store.videoOptions"
-                :disabled="isRecording || store.disableOperation || store.loading"
-                placeholder="选择录制窗口"
                 @change="onSourceChange"
               >
                 <template #option="{ label, icon }">
-                  <img v-if="icon" class="source-icon" :src="icon" alt="" />
-                  <DesktopOutlined v-else class="source-icon-fallback" />
+                  <a-image v-if="icon" :width="24" :height="24" :src="icon"></a-image>
+                  <DesktopOutlined v-else style="width: 24px; height: 24px; font-size: 22px" />
                   {{ label }}
                 </template>
               </a-select>
@@ -68,86 +72,95 @@
             <a-tooltip placement="bottom" title="刷新可选择窗口列表">
               <a-button
                 type="primary"
-                aria-label="刷新录制源"
-                :disabled="isRecording || store.disableOperation || store.loading"
+                :disabled="
+                  store.recorderState != 'inactive' || store.disableOperation || store.loading
+                "
                 @click="refreshSources"
               >
-                <template #icon><ReloadOutlined /></template>
+                <template #icon>
+                  <SyncOutlined />
+                </template>
               </a-button>
             </a-tooltip>
           </a-button-group>
-
-          <a-button-group class="audio-controls">
-            <a-tooltip
-              placement="bottom"
-              :title="supportsSystemAudio ? '系统声音' : '当前平台不支持系统声音'"
-            >
-              <a-button
-                :type="store.hasSystemAudio ? 'primary' : 'default'"
-                :disabled="
-                  !supportsSystemAudio || isRecording || store.disableOperation || store.loading
-                "
-                @click="toggleSystemAudio(!store.hasSystemAudio)"
-              >
-                系统声
-              </a-button>
-            </a-tooltip>
-            <a-tooltip placement="bottom" title="主麦克风声音">
-              <a-button
-                :type="store.hasMicrophoneAudio ? 'primary' : 'default'"
-                :disabled="isRecording || store.disableOperation || store.loading"
-                @click="toggleMicrophone(!store.hasMicrophoneAudio)"
-              >
-                麦克风
-              </a-button>
-            </a-tooltip>
-          </a-button-group>
+          <div class="ml-3 self-end">
+            <a-button-group>
+              <a-tooltip placement="bottom" title="系统声音 Mac和Linux不支持系统内录">
+                <a-button
+                  :type="store.hasSystemAudio ? 'primary' : 'default'"
+                  :disabled="
+                    !supportsSystemAudio ||
+                    store.recorderState != 'inactive' ||
+                    store.disableOperation ||
+                    store.loading
+                  "
+                  @click="toggleSystemAudio(!store.hasSystemAudio)"
+                >
+                  <template #icon>
+                    <SoundOutlined />
+                  </template>
+                </a-button>
+              </a-tooltip>
+              <a-tooltip placement="bottom" title="主麦克风声音">
+                <a-button
+                  :type="store.hasMicrophoneAudio ? 'primary' : 'default'"
+                  :disabled="
+                    store.recorderState != 'inactive' || store.disableOperation || store.loading
+                  "
+                  @click="toggleMicrophone(!store.hasMicrophoneAudio)"
+                >
+                  <template #icon>
+                    <AudioOutlined />
+                  </template>
+                </a-button>
+              </a-tooltip>
+            </a-button-group>
+          </div>
         </div>
-
         <a-button-group>
           <a-tooltip placement="bottom" title="打开录像目录">
-            <a-button aria-label="打开录像目录" @click="openOutputDir">
-              <template #icon><FolderOpenOutlined /></template>
+            <a-button @click="openOutputDir">
+              <template #icon>
+                <OpenIcon />
+              </template>
             </a-button>
           </a-tooltip>
           <a-tooltip placement="bottom" title="设置">
             <a-button
-              aria-label="录屏设置"
-              :disabled="isRecording || store.disableOperation || store.loading"
+              :disabled="
+                store.recorderState != 'inactive' || store.disableOperation || store.loading
+              "
               @click="store.settingVisible = true"
             >
-              <template #icon><SettingOutlined /></template>
+              <template #icon>
+                <SettingOutlined />
+              </template>
             </a-button>
           </a-tooltip>
         </a-button-group>
-      </section>
+      </div>
+      <div class="mb-4 border"></div>
+      <video id="video" ref="preview" class="width-100" muted autoplay playsinline></video>
 
-      <div class="toolbar-divider"></div>
-      <div class="preview-shell">
-        <video id="video" ref="preview" muted autoplay playsinline></video>
-        <div v-if="!store.selectedVideoSource" class="preview-empty">正在等待可用的录制源…</div>
-        <div v-if="countdown > 0" class="preview-overlay">{{ countdown }} 秒后开始录制</div>
-      </div>
-      <div class="preview-footer">
-        <span>{{ platformLabel }} · 保存为 {{ store.outputFormat.toUpperCase() }}</span>
-        <span class="footer-path" :title="store.outputDir">{{ store.outputDir }}</span>
-      </div>
+      <Setting />
     </a-spin>
-    <Setting />
-  </main>
+  </div>
 </template>
 
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import {
+  AudioOutlined,
   DesktopOutlined,
-  FolderOpenOutlined,
-  PauseCircleOutlined,
-  PlayCircleOutlined,
-  ReloadOutlined,
   SettingOutlined,
-  VideoCameraOutlined
+  SoundOutlined,
+  SyncOutlined
 } from '@ant-design/icons-vue'
+import OpenIcon from './components/OpenIcon.vue'
+import PauseIcon from './components/PauseIcon.vue'
+import PlayIcon from './components/PlayIcon.vue'
+import RecordIcon from './components/RecordIcon.vue'
+import StopIcon from './components/StopIcon.vue'
 import Setting from './components/Setting.vue'
 import { useRecorderStore } from './store'
 import {
@@ -170,19 +183,23 @@ const preview = ref<HTMLVideoElement | null>(null)
 const countdown = ref(0)
 const lastPreviewedSource = ref('')
 const supportsSystemAudio = computed(() => recorderRuntime.platform.capabilities.systemAudio)
-const isRecording = computed(() => store.recorderState !== 'inactive')
-const platformLabel = computed(() =>
-  recorderRuntime.platform.os === 'linux'
-    ? 'LINUX'
-    : recorderRuntime.platform.os === 'windows'
-      ? 'WINDOWS'
-      : 'MACOS'
-)
-const statusText = computed(() => {
-  if (countdown.value > 0) return '准备开始'
-  if (store.recorderState === 'recording') return `录制中 ${recordedTime.value}`
-  if (store.recorderState === 'paused') return `已暂停 ${recordedTime.value}`
-  return '未录制'
+
+/**
+ * 顶部状态提示文案，保持与目标插件一致的英文表述。
+ * @returns 录制、暂停或倒计时阶段的提示文案。
+ */
+const infoText = computed(() => {
+  if (store.recorderState == 'recording') {
+    return 'Recording ' + recordedTime.value
+  } else if (store.recorderState == 'paused') {
+    return 'Paused ' + recordedTime.value
+  } else {
+    if (store.disableOperation && countdown.value) {
+      return `Start record after ${countdown.value}s`
+    } else {
+      return ''
+    }
+  }
 })
 
 /**
@@ -377,7 +394,6 @@ async function updateAudioSource(source: AudioSource, enabled: boolean): Promise
   }
   store.audioSources = next
   recorderRuntime.storage.set('audioSource', next)
-  if (!store.selectedVideoSource) store.audioSources = next
 }
 
 /**
@@ -401,6 +417,15 @@ async function onPluginEnter(payload: PluginEnterPayload): Promise<void> {
   else if (payload.code === 'toggle-pause') togglePause()
 }
 
+watch(
+  () => store.errorText,
+  (text) => {
+    if (!text) return
+    // 出现错误时立即停止录制，避免继续写入损坏文件。
+    void stopRecording(store).catch(() => undefined)
+  }
+)
+
 onMounted(async () => {
   loadSettings()
   await recorderRuntime.lifecycle.setSubInput('可绑定“开始录屏”“停止录屏”“暂停恢复录屏”')
@@ -414,153 +439,105 @@ onBeforeUnmount(() => {
 })
 </script>
 
-<style scoped>
-:global(*) {
-  box-sizing: border-box;
-}
-
-:global(body) {
-  margin: 0;
-  color: #1f1f1f;
-  background: #fff;
+<style>
+#app {
   font-family: Avenir, Helvetica, Arial, sans-serif;
   -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
-.recorder-app {
-  min-height: 100vh;
-  padding: 0 16px;
+.px-4 {
+  padding: 0 1rem;
 }
 
-.toolbar-row,
-.toolbar-main,
-.preview-footer {
+.py-4 {
+  padding: 1rem 0;
+}
+
+.ml-3 {
+  margin-left: 0.75rem;
+}
+
+.ml-4 {
+  margin-left: 1rem;
+}
+
+.mb-4 {
+  margin-bottom: 1rem;
+}
+
+.border {
+  border: 1px solid rgba(0, 0, 0, 0.06);
+}
+
+.my-4 {
+  margin-top: 1rem;
+  margin-bottom: 1rem;
+}
+
+.flex {
   display: flex;
-  align-items: center;
 }
 
-.toolbar-row,
-.preview-footer {
-  justify-content: space-between;
-}
-
-.toolbar-row {
-  min-height: 64px;
-  gap: 12px;
-  padding: 12px 0;
-}
-
-.toolbar-main {
-  min-width: 0;
-  flex-wrap: wrap;
-  gap: 12px;
-}
-
-.delay-control {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  white-space: nowrap;
-}
-
-.delay-control :deep(.ant-input-number) {
-  width: 70px;
-}
-
-.source-controls {
-  display: inline-flex;
-  min-width: 0;
-}
-
-.source-controls :deep(.ant-select) {
-  width: min(320px, 35vw);
-  min-width: 160px;
-}
-
-.audio-controls {
+.self-end {
   align-self: flex-end;
 }
 
-.source-icon {
-  width: 24px;
-  height: 24px;
-  margin-right: 6px;
-  object-fit: contain;
-  vertical-align: middle;
+.justify-space-between {
+  justify-content: space-between;
 }
 
-.source-icon-fallback {
-  width: 24px;
-  height: 24px;
-  margin-right: 6px;
-  vertical-align: middle;
+.justify-end {
+  justify-content: flex-end;
 }
 
-.toolbar-divider {
-  margin-bottom: 16px;
-  border-top: 1px solid rgba(0, 0, 0, 0.06);
-}
-
-.preview-shell {
-  position: relative;
-  min-height: 230px;
-  overflow: hidden;
-  background: #171717;
-}
-
-video {
-  display: block;
+.width-100 {
   width: 100%;
-  min-height: 230px;
-  object-fit: contain;
 }
 
-.preview-empty,
-.preview-overlay {
-  position: absolute;
-  inset: 0;
-  display: grid;
-  place-items: center;
-  color: #d9d9d9;
-  font-size: 14px;
+.input-number {
+  width: 3rem;
+  height: 2rem;
 }
 
-.preview-overlay {
-  background: rgba(0, 0, 0, 0.55);
-  font-size: 28px;
-  font-weight: 600;
+.height-2 {
+  height: 2rem;
 }
 
-.preview-footer {
-  gap: 10px;
-  padding: 10px 0 4px;
-  color: #8c8c8c;
-  font-size: 12px;
+.width-3 {
+  width: 3rem;
 }
 
-.footer-path {
+.width-4 {
+  width: 4rem;
+}
+
+.width-8 {
+  width: 8rem;
+}
+
+.width-20 {
+  width: 20rem;
+}
+
+.full-modal .ant-modal {
+  max-width: 100%;
+  top: 0;
+  padding-bottom: 0;
+  margin: 0;
+}
+
+.full-modal .ant-modal-content {
+  display: flex;
+  flex-direction: column;
+  height: calc(100vh);
+}
+
+.full-modal .ant-modal-body {
   flex: 1;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
-@media (max-width: 720px) {
-  .toolbar-row {
-    align-items: flex-start;
-    flex-direction: column;
-  }
-
-  .toolbar-main {
-    width: 100%;
-  }
-
-  .source-controls {
-    flex: 1;
-  }
-
-  .source-controls :deep(.ant-select) {
-    width: 100%;
-  }
+.ant-spin {
+  z-index: 9999 !important;
 }
 </style>

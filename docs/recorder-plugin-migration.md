@@ -38,6 +38,22 @@ UI 应优先复用目标插件，不再为每个插件重新设计一套页面�
 - 修复切换音频源时的失败回滚、MediaRecorder 错误收尾、插件销毁清理和录制文件名冲突。
 - E2E 增加兼容别名检查和真实 MP4 转换文件断言。
 
+### UI 严格还原目标插件
+
+对比原版 `DogeVenci/utools-recorder` 的真实渲染结果后，发现上一版界面被重新设计过，与目标插件差异明显。本轮按"复用目标插件页面"的原则还原：
+
+- 从原版移植 5 个自定义 SVG 图标组件：`RecordIcon`（红色圆点）、`StopIcon`（红色方块）、`PauseIcon`（双竖条）、`PlayIcon`（蓝色三角）、`OpenIcon`（外链箭头），替换原先的 Ant Design 通用图标。
+- 录制按钮恢复为默认按钮 + 红色圆点图标，不再使用 `danger` 实心样式。
+- 系统声音与麦克风按钮恢复为图标按钮，移除「系统声」「麦克风」文字。
+- 预览区恢复白底与自然高度，移除黑色底板、空状态文案和倒计时遮罩。
+- 移除底部新增的平台／格式／输出路径信息栏。
+- 录制源下拉框恢复 `width-20`（320px）固定宽度，选项图标改用 `a-image` 渲染。
+- 设置弹窗恢复 `full-modal` 全屏遮罩形态与「设置」标题，格式选项简化为 WEBM／MP4／GIF。
+- 状态提示文案恢复原版英文表述（`Recording`／`Paused`／`Start record after Ns`）。
+- 原版 `less` 嵌套样式改写为等价原生 CSS，避免为插件引入 `less` 依赖。
+
+还原只涉及 `App.vue` 与 `components/Setting.vue`，`runtime.ts`、`recorder.ts`、`store.ts`、`timer.ts`、`convert.ts` 逻辑层零改动。
+
 ### 目标插件的迁移映射
 
 | 目标插件能力                   | 当前 ZTools 调用               |
@@ -145,3 +161,6 @@ interface RecorderRuntime {
 - `git diff --check` 通过。
 - Electron E2E 在当前环境因缺少 `$DISPLAY`，在 Electron 启动阶段报 `Missing X server or $DISPLAY`，没有进入插件断言；新增的 MP4 断言尚未获得真实 Electron 运行结果。
 - 根目录 lint 存在原有错误，同时新增的 CommonJS preload 也需要单独配置 lint 规则。
+- UI 还原后，录屏插件目录 `eslint` 检查为 0 error、0 warning。
+- 通过 Playwright + Chromium 对原版与还原版做同条件渲染截图比对，工具栏区域像素差异为 5.31%；差异集中于音频按钮的激活态，源于原版依赖 `utools.onPluginReady` 初始化默认值、还原版在 `loadSettings` 中初始化，真实环境下两者行为一致。
+- `vitest` 全量测试结果与改动前基线一致（90 passed / 5 failed，失败项均为 `windowsScanner` 等主进程历史问题，与本插件无关）。

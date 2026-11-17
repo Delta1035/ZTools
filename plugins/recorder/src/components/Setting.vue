@@ -1,62 +1,83 @@
 <template>
-  <a-modal v-model:open="store.settingVisible" title="录屏设置" :footer="null">
-    <a-form layout="vertical">
+  <a-modal
+    v-model:visible="store.settingVisible"
+    title="设置"
+    width="100%"
+    wrap-class-name="full-modal"
+    :mask-style="{ 'background-color': 'white' }"
+    :footer="null"
+    @ok="onSettingOkClick"
+  >
+    <a-form>
+      <a-form-item v-if="data.alertShow">
+        <a-alert
+          v-if="data.alertShow"
+          message="注意"
+          description="长视频由于体积大不适合转换成GIF"
+          type="warning"
+          closable
+        />
+      </a-form-item>
       <a-form-item label="录像保存路径">
         <a-input-group compact>
-          <a-input :value="store.outputDir" disabled />
-          <a-button type="primary" @click="chooseOutputDirectory"> 选择 </a-button>
+          <a-input v-model:value="store.outputDir" disabled style="width: calc(100% - 36px)" />
+          <a-button type="primary" @click="chooseOutputDirectory">
+            <template #icon>
+              <FolderOpenOutlined />
+            </template>
+          </a-button>
         </a-input-group>
       </a-form-item>
+
       <a-form-item label="默认保存格式">
         <a-select
           v-model:value="store.outputFormat"
-          :options="formatOptions"
+          :options="data.fileTypeOption"
           @change="saveFormat"
-        />
-        <a-alert
-          v-if="store.outputFormat === 'gif'"
-          class="format-warning"
-          type="warning"
-          show-icon
-          message="GIF 使用每秒一帧，长视频会产生较大文件。"
-        />
+        >
+        </a-select>
       </a-form-item>
-      <a-form-item label="最近录制">
-        <a-list v-if="store.recentFileList.length" size="small" :data-source="store.recentFileList">
-          <template #renderItem="{ item }">
-            <a-list-item>
-              <a-typography-text ellipsis :content="item.filepath" />
-              <a-button type="link" @click="openFile(item.filepath)">打开</a-button>
-            </a-list-item>
-          </template>
-        </a-list>
-        <a-empty v-else description="暂无录制文件" />
-      </a-form-item>
+
+      <div class="flex justify-end">
+        <a-button type="primary" @click="onSettingOkClick">应用</a-button>
+      </div>
     </a-form>
   </a-modal>
 </template>
 
 <script setup lang="ts">
-import { onMounted } from 'vue'
-import { message } from 'ant-design-vue'
+import { reactive } from 'vue'
+import { FolderOpenOutlined } from '@ant-design/icons-vue'
 import { useRecorderStore } from '../store'
 import { recorderRuntime } from '../runtime'
 import type { OutputFormat } from '../types'
 
 const store = useRecorderStore()
-const formatOptions = [
-  { value: 'webm', label: 'WEBM（原始录制，速度最快）' },
-  { value: 'mp4', label: 'MP4（需要 FFmpeg 转换）' },
-  { value: 'gif', label: 'GIF（每秒一帧）' }
-]
+
+const data = reactive({
+  fileTypeOption: [
+    {
+      value: 'webm',
+      label: 'WEBM'
+    },
+    {
+      value: 'mp4',
+      label: 'MP4'
+    },
+    {
+      value: 'gif',
+      label: 'GIF'
+    }
+  ],
+  alertShow: false
+})
 
 /**
- * 加载输出目录和最近录制文件。
+ * 关闭设置弹窗。
  * @returns 无返回值。
  */
-function loadRecentFiles(): void {
-  store.outputDir = recorderRuntime.files.getOutputDir()
-  store.recentFileList = recorderRuntime.files.getRecent()
+function onSettingOkClick(): void {
+  store.settingVisible = false
 }
 
 /**
@@ -74,7 +95,6 @@ function chooseOutputDirectory(): void {
   if (!directory) return
   recorderRuntime.files.setOutputDir(directory)
   store.outputDir = directory
-  message.success('保存目录已更新')
 }
 
 /**
@@ -84,22 +104,12 @@ function chooseOutputDirectory(): void {
  */
 function saveFormat(value: OutputFormat): void {
   recorderRuntime.storage.set('outfileFormat', value)
+  if (value === 'gif') {
+    // 与目标插件一致：提示 5 秒后自动消失。
+    data.alertShow = true
+    setTimeout(() => {
+      data.alertShow = false
+    }, 5000)
+  }
 }
-
-/**
- * 使用系统默认程序打开录制文件。
- * @param filePath 录制文件路径。
- * @returns 无返回值。
- */
-function openFile(filePath: string): void {
-  recorderRuntime.shell.openPath(filePath)
-}
-
-onMounted(loadRecentFiles)
 </script>
-
-<style scoped>
-.format-warning {
-  margin-top: 12px;
-}
-</style>
