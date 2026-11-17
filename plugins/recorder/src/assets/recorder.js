@@ -36,7 +36,9 @@ export const getSources = async () => {
   }
 
   //TODO 异常处理
-  sources = sources.filter(({ name }) => name != "uTools");
+  // 排除宿主自身窗口，避免把自己录进画面；ZTools 为当前宿主，保留 uTools 以兼容上游。
+  const hostWindowNames = ["ZTools", "uTools"];
+  sources = sources.filter(({ name }) => !hostWindowNames.includes(name));
   sources.forEach((source) => {
     source.appIconURL = source.appIcon?.toDataURL();
   });

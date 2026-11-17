@@ -27,7 +27,7 @@ if (typeof utools != "undefined") {
     store.outFileFormat = window.getOutFileFormat()
 
     utools.setSubInput((text) => { },
-      '可在utools 全局快捷键设置中绑定关键字 "开始录屏" "停止录屏" "暂停恢复录屏"');
+      '可在 ZTools 全局快捷键设置中绑定关键字 "开始录屏" "停止录屏" "暂停恢复录屏"');
   });
 
   utools.onPluginEnter(({ code, type, payload }) => {

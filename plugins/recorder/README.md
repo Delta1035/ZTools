@@ -27,7 +27,20 @@ npm run build    # 产物输出到 dist/
 界面必须与上游保持一致。上游用 Vue 3 + Ant Design Vue 3 + less，
 并经 `unplugin-vue-components` 的 `AntDesignVueResolver` 按需引入 antd 样式。
 换组件库版本或手写 CSS 都会导致视觉偏差且无法收敛，
-因此依赖版本锁定为上游 `package-lock.json` 的精确版本，`src/` 保持原样。
+因此依赖版本锁定为上游 `package-lock.json` 的精确版本，`src/` 保持原样
+（例外：两处把宿主写成 uTools 的字符串已改为 ZTools，见下节）。
+
+## 对上游源码的两处改动
+
+界面和样式零改动，只有两个宿主相关字符串：
+
+| 位置                     | 改动                                                                                        |
+| ------------------------ | ------------------------------------------------------------------------------------------- |
+| `src/assets/plugin.js`   | 子输入框占位文案「可在utools 全局快捷键设置中…」→「可在 ZTools 全局快捷键设置中…」          |
+| `src/assets/recorder.js` | 采集源过滤 `name != "uTools"` → 过滤 `["ZTools", "uTools"]`，避免把 ZTools 自身窗口录进画面 |
+
+`utools.xxx` 形式的 API 调用**没有改也不需要改**——它们由 `public/preload.cjs`
+的 `window.utools = window.ztools` 别名提供。改掉这些标识符会让插件直接失效。
 
 验证方式：本地产物 CSS 与上游 `dist/assets/index-a7643e0f.css` md5 一致，
 同条件渲染截图整幅差异 0.012%。详见 `docs/recorder-plugin-migration.md`。

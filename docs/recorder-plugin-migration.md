@@ -15,7 +15,7 @@
 
 ### 源码
 
-`plugins/recorder/src` 与上游仓库保持同构，没有任何本地改写：
+`plugins/recorder/src` 与上游仓库保持同构，除下文「宿主文案适配」列出的两处字符串外，没有本地改写：
 
 ```text
 src/
@@ -32,6 +32,19 @@ src/
     ├── Setting.vue             # full-modal 全屏设置
     └── NotificationButton.vue  # 保存成功通知里的「打开」按钮
 ```
+
+### 宿主文案适配
+
+界面与逻辑不改，但源码里有两处把宿主写成 uTools 的字符串，移植后必须指向 ZTools：
+
+| 位置                     | 上游内容                                                              | 移植后                                                          |
+| ------------------------ | --------------------------------------------------------------------- | --------------------------------------------------------------- |
+| `src/assets/plugin.js`   | `setSubInput` 占位文案「可在utools 全局快捷键设置中绑定关键字…」      | 「可在 **ZTools** 全局快捷键设置中绑定关键字…」                 |
+| `src/assets/recorder.js` | 采集源过滤 `name != "uTools"`，用于把宿主自身窗口从可录窗口列表里剔除 | 过滤 `["ZTools", "uTools"]`，既排除 ZTools 窗口，也保留上游兼容 |
+
+**`window.utools` / `utools.dbStorage` 等 API 标识符一律不动。** 这些调用靠
+`public/preload.cjs` 里的 `window.utools = window.ztools` 别名工作，改名会让插件直接报错。
+同理，README 里的 `DogeVenci/utools-recorder` 是上游仓库地址，必须保持原样。
 
 ### 依赖版本
 
@@ -153,6 +166,7 @@ pcmanfm / caja / konqueror 顺序探测），没有可用文件管理器时才�
 
 - 录屏插件 Vite 构建通过；产物 CSS 与上游 `dist/assets/index-a7643e0f.css`
   **md5 完全一致**（`50431d6a187d2d842b7933bd3a426daf`），证明样式管线与样式内容相同。
+  改过宿主文案后 CSS 哈希仍然不变（JS 哈希随字符串变化，符合预期）。
 - 主项目类型检查（`typecheck:node` + `typecheck:web`）通过。
 - 对改动文件执行 `eslint`，0 error、0 warning。
 - 通过 Playwright + Chromium 对上游构建产物与本地产物做同条件渲染（900×560，同一份宿主 stub）：
