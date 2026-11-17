@@ -242,7 +242,7 @@ class PluginWindowManager {
 
     // 使用插件名称创建 session，确保和插件主视图共享同一个 session
     const sess = session.fromPartition(sessionPartition)
-    ensurePluginSessionPreload(sess, mainPreload)
+    ensurePluginSessionPreload(sess, mainPreload, 'host')
 
     // 应用代理配置到插件 session
     proxyManager

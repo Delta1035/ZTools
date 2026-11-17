@@ -295,15 +295,17 @@ export class PluginManager {
   }
 
   /**
-   * 创建并配置插件共享的 Session，包括 preload、代理和图标协议。
+   * 创建并配置插件共享的 Session，包括宿主与插件 preload、代理和图标协议。
    * @param pluginName 插件名称。
    * @param pluginPath 插件实体路径。
+   * @param pluginPreloadPath 插件 preload 的绝对路径；没有声明时省略。
    * @returns 完成配置的插件 Session。
    * @throws Session 注册、代理或图标协议配置失败时抛出原始错误。
    */
   private async setupPluginSession(
     pluginName: string,
-    pluginPath: string
+    pluginPath: string,
+    pluginPreloadPath?: string
   ): Promise<Electron.Session> {
     const partition = getPluginSessionPartition(pluginName)
     console.log('[Plugin] 设置插件 Session:', {
@@ -312,8 +314,11 @@ export class PluginManager {
       partition
     })
     const sess = session.fromPartition(partition)
-    // 主视图重建和独立窗口共享会话，宿主 preload 只注册一次。
-    ensurePluginSessionPreload(sess, mainPreload)
+    // 主视图重建和独立窗口共享会话，宿主与插件 preload 各只注册一次。
+    ensurePluginSessionPreload(sess, mainPreload, 'host')
+    if (pluginPreloadPath) {
+      ensurePluginSessionPreload(sess, pluginPreloadPath, `plugin:${pluginName}`)
+    }
     await proxyManager.applyProxyToSession(sess, `插件 ${pluginName}`)
     if (isBundledInternalPlugin(pluginName)) {
       registerIconProtocolForSession(sess)
@@ -322,12 +327,11 @@ export class PluginManager {
   }
 
   /**
-   * 创建插件的 WebContentsView 实例
+   * 创建插件的 WebContentsView 实例。
+   * @param sess 插件专属的共享 Session。
+   * @returns 已配置插件运行环境的 WebContentsView。
    */
-  private createPluginWebContentsView(
-    sess: Electron.Session,
-    preloadPath?: string
-  ): WebContentsView {
+  private createPluginWebContentsView(sess: Electron.Session): WebContentsView {
     const view = new WebContentsView({
       webPreferences: {
         backgroundThrottling: false,
@@ -337,7 +341,6 @@ export class PluginManager {
         sandbox: false,
         allowRunningInsecureContent: true,
         webviewTag: true,
-        preload: preloadPath,
         session: sess,
         defaultFontSize: 14
       }
@@ -1145,10 +1148,10 @@ export class PluginManager {
         ? path.join(pluginPath, pluginConfig.preload)
         : undefined
 
-      const sess = await this.setupPluginSession(effectiveName, pluginPath)
+      const sess = await this.setupPluginSession(effectiveName, pluginPath, preloadPath)
       // 创建期间的终止请求必须生效，不能在 await 后重新生成已被终止的实例。
       if (!canCreate() || !this.mainWindow || this.mainWindow.isDestroyed()) return
-      const view = this.createPluginWebContentsView(sess, preloadPath)
+      const view = this.createPluginWebContentsView(sess)
       const loading = createPluginViewReadiness(view.webContents)
 
       // 注册事件监听
@@ -1974,8 +1977,8 @@ export class PluginManager {
         ? path.join(pluginPath, pluginConfig.preload)
         : undefined
 
-      const sess = await this.setupPluginSession(effectiveName, pluginPath)
-      const pluginView = this.createPluginWebContentsView(sess, preloadPath)
+      const sess = await this.setupPluginSession(effectiveName, pluginPath, preloadPath)
+      const pluginView = this.createPluginWebContentsView(sess)
 
       // 监听插件进程崩溃或退出
       pluginView.webContents.on('render-process-gone', (_event, details) => {

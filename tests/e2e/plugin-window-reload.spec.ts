@@ -183,7 +183,7 @@ test('插件自建窗口可在创建回调中重载且共享会话不重复注�
         child.destroy()
         return result
       })
-    ).toEqual({ visible: true, crashed: false, preloads: 1 })
+    ).toEqual({ visible: true, crashed: false, preloads: 2 })
   }
 })
 

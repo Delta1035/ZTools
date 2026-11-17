@@ -5,6 +5,7 @@ import { promises as fs } from 'fs'
 import AdmZip from 'adm-zip'
 import ffmpegDownloadHtml from '../../../resources/ffmpeg.html?asset'
 import { getExtendsPath } from './appData/appDataPaths'
+import { findSystemFFmpegPath } from './ffmpegPlatform'
 
 class FFmpegManager {
   private downloadWindow: BrowserWindow | null = null
@@ -63,8 +64,17 @@ class FFmpegManager {
 
   /**
    * 确保 FFmpeg 可用，不存在则触发下载
+   * @returns 可执行的 FFmpeg 路径。
+   * @throws 当前平台没有可用 FFmpeg 或下载失败时抛出错误。
    */
   async ensureFFmpeg(): Promise<string> {
+    // Linux 优先复用发行版提供的 FFmpeg，避免下载器进入不支持的平台分支。
+    const systemFFmpegPath = await findSystemFFmpegPath()
+    if (systemFFmpegPath) return systemFFmpegPath
+    if (process.platform === 'linux') {
+      throw new Error('Linux 未找到可用的 FFmpeg，请先安装 ffmpeg')
+    }
+
     const ffmpegPath = this.resolveFFmpegPath()
 
     if (

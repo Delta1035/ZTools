@@ -1,0 +1,36 @@
+{
+  "$schema": "https://ztoolscenter.github.io/ZTools-doc/schema/ztools.schema.json",
+  "name": "ztools-recorder",
+  "title": "录屏",
+  "description": "录制屏幕或指定窗口，支持暂停、麦克风和 MP4/GIF 转换",
+  "author": "Dovenci / ZTools adaptation",
+  "version": "1.0.0",
+  "main": "index.html",
+  "logo": "logo.png",
+  "preload": "preload.cjs",
+  "development": {
+    "main": "http://127.0.0.1:5178"
+  },
+  "features": [
+    {
+      "code": "recorder",
+      "explain": "录屏",
+      "cmds": ["录屏"]
+    },
+    {
+      "code": "start-recording",
+      "explain": "开始录屏",
+      "cmds": ["开始录屏"]
+    },
+    {
+      "code": "stop-recording",
+      "explain": "停止录屏",
+      "cmds": ["停止录屏"]
+    },
+    {
+      "code": "toggle-pause",
+      "explain": "暂停或恢复录屏",
+      "cmds": ["暂停恢复录屏"]
+    }
+  ]
+}
