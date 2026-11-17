@@ -77,6 +77,26 @@ UI 应优先复用目标插件，不再为每个插件重新设计一套页面�
 - 转换期间锁定录制和设置操作。
 - 录制文件名增加毫秒和冲突序号，避免覆盖同一秒内的文件。
 - 共享 Session 的 preload 按稳定作用域替换旧路径，避免插件升级后旧、新脚本同时执行。
+- 修复 Linux 下「打开录像目录」跳到非文件管理器程序的问题。
+
+## Linux 打开目录被劫持的问题
+
+现象：在 Linux 上点击工具栏的「打开录像目录」，或录制保存后自动定位文件时，
+打开的却是 Antigravity（IDE）而不是文件管理器。
+
+根因：宿主把目录打开交给 Electron 的 `shell.openPath()`，Linux 下它等价于 `xdg-open`，
+会遵循 `mimeapps.list` 的默认关联。而部分应用会把 `inode/directory` 注册进自己的
+`MimeType`（Antigravity 就是这样注册的），于是目录的默认打开程序变成了 IDE。
+
+修复：目录类路径不再走 `xdg-open`，改为直接启动系统文件管理器
+（`src/main/utils/linuxFileManager.ts`，按 nautilus / dolphin / thunar / nemo /
+pcmanfm / caja / konqueror 顺序探测），没有可用文件管理器时才回退到系统默认方式。
+
+该修复覆盖三处调用：
+
+- `src/main/api/plugin/shell.ts` 的 `shell-open-path`：录屏插件「打开录像目录」走这里；
+- `src/main/api/plugin/shell.ts` 的 `shell-show-item-in-folder`：录制保存后定位文件走这里；
+- `src/main/api/renderer/systemCommands.ts` 的「前往文件夹」系统命令。
 
 ## 仍需继续修正的问题
 

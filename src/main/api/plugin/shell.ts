@@ -1,10 +1,13 @@
 import { execFile } from 'child_process'
+import { promises as fs } from 'fs'
 import os from 'os'
+import path from 'path'
 import { app, ipcMain, shell } from 'electron'
 import { getFileIconAsBase64 } from '../../core/iconProtocol'
 import { WindowManager } from '../../core/native/index.js'
 import type ClipboardManager from '../../managers/clipboardManager'
 import { getExplorerFolderPathFromWindow } from '../../utils/common'
+import { openLinuxDirectory } from '../../utils/linuxFileManager'
 
 const MAC_BROWSER_APP_MAP = {
   'com.apple.Safari': 'Safari',
@@ -56,6 +59,17 @@ export class PluginShellAPI {
     // 在文件管理器中显示文件
     ipcMain.on('shell-show-item-in-folder', (event, fullPath: string) => {
       try {
+        if (os.platform() === 'linux') {
+          // Linux 下 showItemInFolder 依赖系统默认的目录关联，可能被 IDE 等应用劫持，
+          // 因此改为直接用文件管理器打开文件所在目录。
+          const directoryPath = path.dirname(fullPath)
+          openLinuxDirectory(directoryPath).catch((error: unknown) => {
+            console.warn('[PluginShell] Linux 文件管理器启动失败，回退到系统默认方式:', error)
+            shell.showItemInFolder(fullPath)
+          })
+          event.returnValue = undefined
+          return
+        }
         shell.showItemInFolder(fullPath)
       } catch (error: unknown) {
         console.error('[PluginShell] 在文件管理器中显示文件失败:', error)
@@ -66,6 +80,20 @@ export class PluginShellAPI {
     // 使用系统默认方式打开文件或文件夹
     ipcMain.on('shell-open-path', async (event, fullPath: string) => {
       try {
+        if (os.platform() === 'linux') {
+          // 目录不能走 xdg-open：mimeapps.list 的默认关联可能指向 IDE 等非文件管理器程序。
+          const stats = await fs.stat(fullPath).catch(() => null)
+          if (stats?.isDirectory()) {
+            try {
+              await openLinuxDirectory(fullPath)
+              event.returnValue = { success: true }
+              return
+            } catch (error: unknown) {
+              console.warn('[PluginShell] Linux 文件管理器启动失败，回退到系统默认方式:', error)
+            }
+          }
+        }
+
         const errorMessage = await shell.openPath(fullPath)
         event.returnValue = {
           success: !errorMessage,

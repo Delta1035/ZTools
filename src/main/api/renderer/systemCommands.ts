@@ -1,5 +1,6 @@
 import { exec } from 'child_process'
 import os from 'os'
+import path from 'path'
 import type { PluginManager } from '../../managers/pluginManager'
 import { BrowserWindow, clipboard, nativeImage, Notification, shell } from 'electron'
 import { promisify } from 'util'
@@ -10,6 +11,7 @@ import databaseAPI from '../shared/database'
 import * as terminalLauncher from '../../utils/terminalLauncher'
 import { ColorPicker } from '../../core/native/index.js'
 import { getExplorerFolderPathFromWindow } from '../../utils/common'
+import { openLinuxDirectory } from '../../utils/linuxFileManager'
 
 interface SystemCommandContext {
   mainWindow: Electron.BrowserWindow | null
@@ -547,6 +549,20 @@ async function handleOpenFolder(ctx: SystemCommandContext, param: any): Promise<
     stat = fs.statSync(targetPath)
   } catch {
     // 路径不存在，仍尝试 openPath（让系统报错）
+  }
+
+  if (process.platform === 'linux') {
+    // Linux 下不能依赖 xdg-open：目录默认关联可能被 IDE 等应用接管，
+    // 因此统一用文件管理器打开目录。
+    const directoryPath = stat && stat.isFile() ? path.dirname(targetPath) : targetPath
+    try {
+      await openLinuxDirectory(directoryPath)
+      ctx.mainWindow?.webContents.send('app-launched')
+      ctx.mainWindow?.hide()
+      return { success: true }
+    } catch (error: unknown) {
+      console.warn('[SystemCmd] Linux 文件管理器启动失败，回退到系统默认方式:', error)
+    }
   }
 
   if (stat && stat.isFile()) {
