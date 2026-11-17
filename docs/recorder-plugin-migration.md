@@ -222,3 +222,31 @@ pcmanfm / caja / konqueror 顺序探测），没有可用文件管理器时才�
 - Electron E2E 在当前环境因缺少 `$DISPLAY`（`Missing X server or $DISPLAY`）无法运行，
   选择器与断言已按新界面更新，尚无真实 Electron 运行结果。
 - `vitest` 全量结果与改动前基线一致（失败项均为 `windowsScanner` 等主进程历史问题，与本插件无关）。
+
+## 附录：已废弃的历史方案
+
+移植初期（`ce89c76` → `ef6aca3`）文档里有一节「适配层设计」，提出两层模型：
+
+1. **宿主兼容层**：在插件 preload 里把 uTools API 映射到 ZTools；
+2. **业务适配层**：定义 `RecorderRuntime` 领域接口
+   （`platform` / `capture` / `files` / `conversion` / `storage` / `lifecycle`），
+   业务代码只依赖该接口，由 ZTools、uTools、浏览器测试环境各自实现适配器。
+
+这一版方案已删除，因为落地时走了相反的路：为了给 `RecorderRuntime` 供数据，
+插件页面被重写成一套「antd 4 + 手写 CSS」的新界面，与原版整幅像素差 41.49% 且无法收敛。
+
+在新方案里：第 1 层保留并演化为 `public/preload.cjs` 的兼容桥（对应 R4）；
+第 2 层整体废弃 —— `runtime.ts` / `recorder.ts` / `store.ts` / `timer.ts` / `convert.ts` 均已删除，
+业务逻辑回归上游 `src/assets/*.js`（对应 R1：不引入中间层）。
+
+该方案里仍有两条结论成立，可复用到后续插件：
+
+- **通用 uTools 兼容模式**：兼容桥不该每个插件各写一份，建议抽成由 manifest 显式开启的
+  通用兼容层，避免所有插件默认暴露旧 API；
+- **平台能力矩阵**：用能力矩阵替代散落在各处的 `isLinux` / `isWindows` 判断。
+
+查看被替换掉的完整文字：
+
+```bash
+git show ef6aca3:docs/recorder-plugin-migration.md
+```
