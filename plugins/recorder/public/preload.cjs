@@ -181,6 +181,18 @@ async function convert2Gif(inputPath) {
 
 // 为目标插件保留旧 API 名称，后续只需替换宿主适配层即可复用原 UI。
 window.utools = window.ztools
+
+// uTools 中 onPluginReady 表示「插件就绪」，与 onPluginEnter 是两个独立事件；
+// ZTools 把两者都映射到同一个进入回调，后注册会覆盖前注册。
+// 目标插件在 onPluginReady 里初始化音频源、延迟和输出格式，
+// 因此这里恢复独立语义：下一轮事件循环回调一次，且不覆盖 onPluginEnter。
+window.ztools.onPluginReady = (callback) => {
+  if (typeof callback === 'function') {
+    setTimeout(() => callback(), 0)
+  }
+  return Promise.resolve()
+}
+
 window.getOutFileFormat = getOutFileFormat
 window.setOutFileFormat = setOutFileFormat
 window.runFFmpeg = runFFmpeg

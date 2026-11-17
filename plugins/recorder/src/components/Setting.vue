@@ -1,12 +1,12 @@
 <template>
   <a-modal
-    v-model:visible="store.settingVisible"
+    v-model:visible="store.settingVisable"
     title="设置"
     width="100%"
     wrap-class-name="full-modal"
-    :mask-style="{ 'background-color': 'white' }"
-    :footer="null"
+    :maskStyle="{ 'background-color': 'white' }"
     @ok="onSettingOkClick"
+    :footer="null"
   >
     <a-form>
       <a-form-item v-if="data.alertShow">
@@ -20,8 +20,12 @@
       </a-form-item>
       <a-form-item label="录像保存路径">
         <a-input-group compact>
-          <a-input v-model:value="store.outputDir" disabled style="width: calc(100% - 36px)" />
-          <a-button type="primary" @click="chooseOutputDirectory">
+          <a-input
+            disabled
+            v-model:value="store.outputDir"
+            style="width: calc(100% - 36px)"
+          />
+          <a-button type="primary" @click="onOutputDirClick">
             <template #icon>
               <FolderOpenOutlined />
             </template>
@@ -31,13 +35,57 @@
 
       <a-form-item label="默认保存格式">
         <a-select
-          v-model:value="store.outputFormat"
           :options="data.fileTypeOption"
-          @change="saveFormat"
+          v-model:value="store.outFileFormat"
+          @change="onOutFileFormatChange"
         >
         </a-select>
       </a-form-item>
 
+      <!-- <a-form-item label="最近录像">
+        <a-table :columns="data.columns" :data-source="store.recentFilelist">
+          <template #bodyCell="{ column, record, index }">
+            <template v-if="column.key === 'filepath'">
+              <a @click.prevent.stop="onOpenFileClick(record.filepath)">
+                {{ record.filepath }}
+              </a>
+            </template>
+            <template v-else-if="column.key === 'action'">
+              <span>
+                <a @click.prevent.stop="onOpenDirClick(record.filepath)"
+                  >打开位置</a
+                >
+                <a-divider type="vertical" />
+                <a-dropdown v-model:visible="data.dropdownVisable[index]">
+                  <a class="ant-dropdown-link" @click.prevent
+                    >转换格式<down-outlined
+                  /></a>
+                  <template #overlay>
+                    <a-menu>
+                      <a-menu-item>
+                        <a
+                          @click.prevent.stop="
+                            onConvertClick(record.filepath, '.mp4')
+                          "
+                          >.MP4</a
+                        >
+                      </a-menu-item>
+                      <a-menu-item>
+                        <a
+                          @click.prevent.stop="
+                            onConvertClick(record.filepath, '.gif')
+                          "
+                          >.GIF</a
+                        >
+                      </a-menu-item>
+                    </a-menu>
+                  </template>
+                </a-dropdown>
+              </span>
+            </template>
+          </template>
+        </a-table>
+      </a-form-item> -->
       <div class="flex justify-end">
         <a-button type="primary" @click="onSettingOkClick">应用</a-button>
       </div>
@@ -46,70 +94,115 @@
 </template>
 
 <script setup lang="ts">
-import { reactive } from 'vue'
-import { FolderOpenOutlined } from '@ant-design/icons-vue'
-import { useRecorderStore } from '../store'
-import { recorderRuntime } from '../runtime'
-import type { OutputFormat } from '../types'
+import { FolderOpenOutlined, DownOutlined } from "@ant-design/icons-vue";
+import { onMounted, reactive } from "vue";
 
-const store = useRecorderStore()
+import { useStore } from "../store.js";
+const store = useStore();
 
 const data = reactive({
+  columns: [
+    { name: "文件", dataIndex: "filepath", key: "filepath" },
+    { name: "操作", dataIndex: "action", key: "action" },
+  ],
+
+  dropdownVisable: [...Array(10)].map(() => false),
   fileTypeOption: [
     {
-      value: 'webm',
-      label: 'WEBM'
+      value: "webm",
+      label: "WEBM",
     },
     {
-      value: 'mp4',
-      label: 'MP4'
+      value: "mp4",
+      label: "MP4",
     },
     {
-      value: 'gif',
-      label: 'GIF'
-    }
+      value: "gif",
+      label: "GIF",
+    },
   ],
-  alertShow: false
-})
+  fileType: "webm",
+  alertShow: false,
+});
 
-/**
- * 关闭设置弹窗。
- * @returns 无返回值。
- */
-function onSettingOkClick(): void {
-  store.settingVisible = false
-}
+onMounted(() => {
+  if (!window.utools) return;
+  store.outputDir = mediaFile.getOutputDir();
+});
 
-/**
- * 打开目录选择对话框并保存用户选择。
- * @returns 无返回值。
- */
-function chooseOutputDirectory(): void {
-  const directories = recorderRuntime.dialogs.showOpenDialog({
-    title: '选择录像保存目录',
-    defaultPath: store.outputDir,
-    buttonLabel: '选择此目录',
-    properties: ['openDirectory', 'createDirectory', 'dontAddToRecent']
-  })
-  const directory = directories?.[0]
-  if (!directory) return
-  recorderRuntime.files.setOutputDir(directory)
-  store.outputDir = directory
-}
-
-/**
- * 保存默认输出格式。
- * @param value 新的输出格式。
- * @returns 无返回值。
- */
-function saveFormat(value: OutputFormat): void {
-  recorderRuntime.storage.set('outfileFormat', value)
-  if (value === 'gif') {
-    // 与目标插件一致：提示 5 秒后自动消失。
-    data.alertShow = true
+const onOutFileFormatChange = () => {
+  if (store.outFileFormat == "gif") {
+    data.alertShow = true;
     setTimeout(() => {
-      data.alertShow = false
-    }, 5000)
+      data.alertShow = false;
+    }, 5000);
   }
-}
+  window.setOutFileFormat(store.outFileFormat);
+};
+
+const onSettingOkClick = () => {
+  store.settingVisable = false;
+};
+
+const onOutputDirClick = () => {
+  if (!window.utools) return;
+  const dirs = utools?.showOpenDialog({
+    title: "选择保存目录",
+    defaultPath: mediaFile.getOutputDir(),
+    buttonLabel: "选择此目录",
+    properties: [
+      "openDirectory",
+      "createDirectory",
+      "dontAddToRecent",
+      "treatPackageAsDirectory",
+    ],
+  });
+  if (dirs?.length && dirs[0]?.length) {
+    mediaFile.setOutputDir(dirs[0]);
+    store.outputDir = dirs[0];
+  }
+};
+
+const onOpenFileClick = (filePath: string) => {
+  window?.utools?.shellOpenPath(filePath);
+};
+
+const onOpenDirClick = (filePath: string) => {
+  window?.utools?.shellShowItemInFolder(filePath);
+};
+
+const onConvertClick = async (filePath: string, fileType: string) => {
+  data.dropdownVisable = false;
+  store.loading = true;
+  if (fileType == ".mp4") {
+    window
+      ?.runFFmpeg(filePath)
+      .then((filepath) => {
+        // window?.utools?.shellShowItemInFolder(filepath);
+      })
+      .catch((err) => {
+        store.errorText = "转换格式失败,请选择视频保存目录为非系统目录";
+      })
+      .finally(() => {
+        console.log("finally");
+        store.loading = false;
+      });
+  } else if (fileType == ".gif") {
+    convert2Gif(filePath)
+      .then((filepath) => {})
+      .catch((err) => {
+        store.errorText = "转换格式失败,请选择视频保存目录为非系统目录";
+      })
+      .finally(() => {
+        console.log("finally");
+        store.loading = false;
+      });
+  }
+};
 </script>
+
+<style>
+.justify-end {
+  justify-content: flex-end;
+}
+</style>

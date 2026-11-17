@@ -155,7 +155,7 @@ test.describe('录屏插件', () => {
         .poll(() =>
           executeRecorder(
             electronApp!,
-            'Boolean(document.querySelector("#switchBtn") && document.querySelector("#source"))'
+            'Boolean(document.querySelector("#switchBtn") && document.querySelector(".ant-select.width-20"))'
           )
         )
         .toBe(true)
@@ -180,14 +180,14 @@ test.describe('录屏插件', () => {
           () =>
             executeRecorder(
               electronApp!,
-              `(() => { const button = document.querySelector('.ant-btn-primary.ant-btn-dangerous'); return Boolean(button && !button.disabled) })()`
+              `(() => { const button = document.querySelector('#switchBtn'); return Boolean(button && !button.disabled) })()`
             ),
           { timeout: 10_000 }
         )
         .toBe(true)
       await executeRecorder(
         electronApp,
-        `(async () => { window.mediaFile.setOutputDir(${JSON.stringify(outputDir)}); document.querySelector('.ant-btn-primary.ant-btn-dangerous')?.click(); return true })()`
+        `(async () => { window.mediaFile.setOutputDir(${JSON.stringify(outputDir)}); document.querySelector('#switchBtn')?.click(); return true })()`
       )
       await new Promise((resolve) => setTimeout(resolve, 5000))
       const startState = await executeRecorder(
@@ -195,16 +195,13 @@ test.describe('录屏插件', () => {
         `({ currentPath: window.mediaFile.getCurrentPath(), bodyText: document.body.innerText })`
       )
       expect(String((startState as { currentPath?: string })?.currentPath)).toBeTruthy()
-      expect(String((startState as { bodyText?: string })?.bodyText)).toContain('录制中')
+      expect(String((startState as { bodyText?: string })?.bodyText)).toContain('Recording')
       await new Promise((resolve) => setTimeout(resolve, 1500))
-      await executeRecorder(
-        electronApp,
-        `document.querySelector('.ant-btn-primary.ant-btn-dangerous')?.click(); true`
-      )
+      await executeRecorder(electronApp, `document.querySelector('#switchBtn')?.click(); true`)
       await new Promise((resolve) => setTimeout(resolve, 3000))
       await expect
         .poll(() => executeRecorder(electronApp!, 'document.body.innerText'))
-        .not.toContain('录制中')
+        .not.toContain('Recording')
       let savedPath = ''
       await expect
         .poll(

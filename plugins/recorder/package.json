@@ -5,20 +5,19 @@
   "type": "module",
   "scripts": {
     "build": "vite build",
-    "dev": "vite --host 127.0.0.1",
-    "typecheck": "vue-tsc --noEmit"
+    "dev": "vite --host 127.0.0.1"
   },
   "dependencies": {
-    "@ant-design/icons-vue": "^7.0.1",
-    "ant-design-vue": "^4.2.6",
-    "pinia": "^3.0.4",
-    "vue": "^3.5.26"
+    "@ant-design/icons-vue": "6.1.0",
+    "ant-design-vue": "3.2.20",
+    "pinia": "2.3.1",
+    "vue": "3.5.45"
   },
   "devDependencies": {
-    "@vitejs/plugin-vue": "^6.0.3",
-    "@vue/compiler-sfc": "^3.5.26",
-    "typescript": "^5.9.3",
-    "vite": "^7.3.0",
-    "vue-tsc": "^3.1.4"
+    "@vitejs/plugin-vue": "4.6.2",
+    "@vue/compiler-sfc": "3.5.45",
+    "less": "4.9.1",
+    "unplugin-vue-components": "0.24.1",
+    "vite": "4.5.14"
   }
 }

@@ -24,6 +24,6 @@
   </Icon>
 </template>
 
-<script setup lang="ts">
-import Icon from '@ant-design/icons-vue'
+<script setup>
+import Icon from '@ant-design/icons-vue';
 </script>

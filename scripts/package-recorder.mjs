@@ -190,7 +190,7 @@ async function main() {
 
   if (!options.skipBuild) {
     const pnpmCommand = process.platform === 'win32' ? 'pnpm.cmd' : 'pnpm'
-    await runCommand(pnpmCommand, ['--dir', 'plugins/recorder', 'typecheck'])
+    // 插件源码沿用目标插件的纯 JavaScript 实现，没有 TS 产物需要类型检查。
     await runCommand(pnpmCommand, ['--dir', 'plugins/recorder', 'build'])
   }
 

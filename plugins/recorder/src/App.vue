@@ -6,7 +6,6 @@
       :message="store.errorText"
       banner
       closable
-      @close="store.errorText = ''"
     />
     <a-alert v-if="infoText?.length" :message="infoText" type="info" />
     <a-spin tip="格式转换中..." size="large" :spinning="store.loading">
@@ -16,8 +15,8 @@
             <a-tooltip placement="bottom" title="开始或停止">
               <a-button
                 id="switchBtn"
-                :disabled="store.disableOperation || store.loading"
-                @click="onRecordClick"
+                @click="onRecBtnClick"
+                :disabled="store.disableOperation"
               >
                 <template #icon>
                   <RecordIcon v-if="store.recorderState == 'inactive'" />
@@ -27,8 +26,8 @@
             </a-tooltip>
             <a-tooltip placement="bottom" title="暂停或恢复">
               <a-button
-                :disabled="store.recorderState == 'inactive' || store.loading"
                 @click="togglePause"
+                :disabled="store.recorderState == 'inactive'"
               >
                 <template #icon>
                   <PlayIcon v-if="store.recorderState == 'paused'" />
@@ -37,34 +36,51 @@
               </a-button>
             </a-tooltip>
           </a-button-group>
-          <a-tooltip class="ml-3" placement="bottom" title="快捷键开始不受此影响 0s不延迟">
+          <a-tooltip
+            class="ml-3"
+            placement="bottom"
+            title="快捷键开始不受此影响 0s不延迟"
+          >
             延迟
             <a-input-number
+              class="width-4"
               id="inputDelay"
               v-model:value="store.delayStart"
-              class="width-4"
+              @change="onDelayChange"
               :min="0"
               :max="10"
               :disabled="
-                store.recorderState != 'inactive' || store.disableOperation || store.loading
+                store.recorderState != 'inactive' || store.disableOperation
               "
-              @change="saveDelay"
             />
           </a-tooltip>
           <a-button-group>
-            <a-tooltip placement="bottom" title="选择录制窗口(新建或关闭窗口需刷新)">
+            <a-tooltip
+              placement="bottom"
+              title="选择录制窗口(新建或关闭窗口需刷新)"
+            >
               <a-select
-                v-model:value="store.selectedVideoSource"
                 class="ml-3 width-20"
+                label-in-value
+                v-model:value="store.selectedVideoSource"
+                @select="handleSelectChange"
                 :disabled="
-                  store.recorderState != 'inactive' || store.disableOperation || store.loading
+                  store.recorderState != 'inactive' || store.disableOperation
                 "
                 :options="store.videoOptions"
-                @change="onSourceChange"
+                option-label-prop="label"
               >
                 <template #option="{ label, icon }">
-                  <a-image v-if="icon" :width="24" :height="24" :src="icon"></a-image>
-                  <DesktopOutlined v-else style="width: 24px; height: 24px; font-size: 22px" />
+                  <a-image
+                    v-if="icon"
+                    :width="24"
+                    :height="24"
+                    :src="icon"
+                  ></a-image>
+                  <DesktopOutlined
+                    v-else
+                    style="width: 24px; height: 24px; font-size: 22px"
+                  />
                   {{ label }}
                 </template>
               </a-select>
@@ -72,10 +88,10 @@
             <a-tooltip placement="bottom" title="刷新可选择窗口列表">
               <a-button
                 type="primary"
+                @click="onRefreshClick"
                 :disabled="
-                  store.recorderState != 'inactive' || store.disableOperation || store.loading
+                  store.recorderState != 'inactive' || store.disableOperation
                 "
-                @click="refreshSources"
               >
                 <template #icon>
                   <SyncOutlined />
@@ -85,16 +101,16 @@
           </a-button-group>
           <div class="ml-3 self-end">
             <a-button-group>
-              <a-tooltip placement="bottom" title="系统声音 Mac和Linux不支持系统内录">
+              <a-tooltip
+                placement="bottom"
+                title="系统声音 Mac和Linux不支持系统内录"
+              >
                 <a-button
-                  :type="store.hasSystemAudio ? 'primary' : 'default'"
+                  @click="onRecSysAudioClick"
+                  :type="store.hasSysAudio ? 'primary' : 'default'"
                   :disabled="
-                    !supportsSystemAudio ||
-                    store.recorderState != 'inactive' ||
-                    store.disableOperation ||
-                    store.loading
+                    store.recorderState != 'inactive' || store.disableOperation
                   "
-                  @click="toggleSystemAudio(!store.hasSystemAudio)"
                 >
                   <template #icon>
                     <SoundOutlined />
@@ -103,11 +119,11 @@
               </a-tooltip>
               <a-tooltip placement="bottom" title="主麦克风声音">
                 <a-button
-                  :type="store.hasMicrophoneAudio ? 'primary' : 'default'"
+                  @click="onRecMicAudioClick"
+                  :type="store.hasMicAudio ? 'primary' : 'default'"
                   :disabled="
-                    store.recorderState != 'inactive' || store.disableOperation || store.loading
+                    store.recorderState != 'inactive' || store.disableOperation
                   "
-                  @click="toggleMicrophone(!store.hasMicrophoneAudio)"
                 >
                   <template #icon>
                     <AudioOutlined />
@@ -119,7 +135,7 @@
         </div>
         <a-button-group>
           <a-tooltip placement="bottom" title="打开录像目录">
-            <a-button @click="openOutputDir">
+            <a-button @click="openVideoDir">
               <template #icon>
                 <OpenIcon />
               </template>
@@ -127,319 +143,222 @@
           </a-tooltip>
           <a-tooltip placement="bottom" title="设置">
             <a-button
+              @click="onSettingClick"
               :disabled="
-                store.recorderState != 'inactive' || store.disableOperation || store.loading
+                store.recorderState != 'inactive' || store.disableOperation
               "
-              @click="store.settingVisible = true"
             >
               <template #icon>
-                <SettingOutlined />
+                <setting-outlined />
               </template>
             </a-button>
           </a-tooltip>
         </a-button-group>
       </div>
       <div class="mb-4 border"></div>
-      <video id="video" ref="preview" class="width-100" muted autoplay playsinline></video>
+      <video id="video" ref="videoPreview" class="width-100" muted></video>
 
       <Setting />
     </a-spin>
   </div>
 </template>
 
-<script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+<script setup>
+import { useStore } from "./store.js";
+const store = useStore();
+import { storeToRefs } from "pinia";
+const { errorText, savedText } = storeToRefs(store);
+
+import { ref, reactive, onMounted, computed, watch, h } from "vue";
 import {
-  AudioOutlined,
-  DesktopOutlined,
-  SettingOutlined,
-  SoundOutlined,
-  SyncOutlined
-} from '@ant-design/icons-vue'
-import OpenIcon from './components/OpenIcon.vue'
-import PauseIcon from './components/PauseIcon.vue'
-import PlayIcon from './components/PlayIcon.vue'
-import RecordIcon from './components/RecordIcon.vue'
-import StopIcon from './components/StopIcon.vue'
-import Setting from './components/Setting.vue'
-import { useRecorderStore } from './store'
-import {
-  createCaptureStream,
-  getCaptureSources,
-  getCurrentStream,
+  getSources,
+  getStream,
   getRecorderState,
-  disposeRecorder,
-  startRecording,
-  stopRecording,
-  toggleRecordingPause
-} from './recorder'
-import { cancelCountdown, recordedTime, runCountdown } from './timer'
-import { convertRecording } from './convert'
-import { recorderRuntime } from './runtime'
-import type { AudioSource, PluginEnterPayload } from './types'
+  startRecord,
+  stopRecord,
+  pauseRecord,
+  resumeRecord,
+  togglePause,
+} from "./assets/recorder.js";
 
-const store = useRecorderStore()
-const preview = ref<HTMLVideoElement | null>(null)
-const countdown = ref(0)
-const lastPreviewedSource = ref('')
-const supportsSystemAudio = computed(() => recorderRuntime.platform.capabilities.systemAudio)
+import { openVideoDir } from "./assets/plugin.js";
+import { recordedTime, countDownTimer } from "./assets/timer.js";
 
-/**
- * 顶部状态提示文案，保持与目标插件一致的英文表述。
- * @returns 录制、暂停或倒计时阶段的提示文案。
- */
+import {
+  SyncOutlined,
+  FolderOpenOutlined,
+  DesktopOutlined,
+  PauseOutlined,
+  SoundOutlined,
+  AudioOutlined,
+  AudioMutedOutlined,
+  SettingOutlined,
+} from "@ant-design/icons-vue";
+import PauseIcon from "./components/PauseIcon.vue";
+import PlayIcon from "./components/PlayIcon.vue";
+import RecordIcon from "./components/RecordIcon.vue";
+import StopIcon from "./components/StopIcon.vue";
+import OpenIcon from "./components/OpenIcon.vue";
+import { notification } from "ant-design-vue";
+import NotificationButton from "./components/NotificationButton.vue";
+import Setting from "./components/Setting.vue";
+import { convertVideo } from "./assets/convert";
+
+const videoPreview = ref(null);
+let countDown = ref(0);
+
+watch(errorText, (text, prevText) => {
+  stopRecord();
+  document.hidden && utools?.showNotification(text, "lp"); //隐藏窗口时弹出错误提示
+});
+
+watch(savedText, (text, prevText) => {
+  convertVideo();
+  // openNotification(text, "点击'转换格式'转换成mp4格式。");
+});
+
+const openNotification = (title, description) => {
+  const key = `notify`;
+  notification.open({
+    message: title,
+    description,
+    placement: "topRight",
+    duration: 10,
+    onClose: () => {},
+    btn: () =>
+      h(
+        NotificationButton,
+        {
+          filePath: store.savedFilePath,
+          onClick: () => {
+            notification.close("notify");
+          },
+        },
+        null
+      ),
+    key,
+  });
+};
+
 const infoText = computed(() => {
-  if (store.recorderState == 'recording') {
-    return 'Recording ' + recordedTime.value
-  } else if (store.recorderState == 'paused') {
-    return 'Paused ' + recordedTime.value
+  if (store.recorderState == "recording") {
+    return "Recording " + recordedTime.value;
+  } else if (store.recorderState == "paused") {
+    return "Paused " + recordedTime.value;
   } else {
-    if (store.disableOperation && countdown.value) {
-      return `Start record after ${countdown.value}s`
+    if (store.disableOperation && countDown.value) {
+      return `Start record after ${countDown.value}s`;
     } else {
-      return ''
+      return "";
     }
   }
-})
+});
 
-/**
- * 从 ZTools 持久化存储加载录屏设置。
- * @returns 无返回值。
- */
-function loadSettings(): void {
-  const savedDelay = recorderRuntime.storage.get<unknown>('delayStart')
-  if (
-    typeof savedDelay === 'number' &&
-    Number.isFinite(savedDelay) &&
-    savedDelay >= 0 &&
-    savedDelay <= 10
-  ) {
-    store.delayStart = savedDelay
-  }
-
-  const savedAudio = recorderRuntime.storage.get<unknown>('audioSource')
-  if (Array.isArray(savedAudio)) {
-    store.audioSources = savedAudio.filter(
-      (item): item is AudioSource => item === 'system' || item === 'mic'
-    )
-  } else if (supportsSystemAudio.value) {
-    // 保持目标插件的行为：Windows 首次运行默认录制系统声音。
-    store.audioSources = ['system']
-  }
-  if (!supportsSystemAudio.value) {
-    store.audioSources = store.audioSources.filter((item) => item !== 'system')
-  }
-  store.outputDir = recorderRuntime.files.getOutputDir()
-  const savedFormat = recorderRuntime.storage.get<unknown>('outfileFormat')
-  if (savedFormat === 'webm' || savedFormat === 'mp4' || savedFormat === 'gif') {
-    store.outputFormat = savedFormat
-  }
-}
-
-/**
- * 刷新屏幕和窗口捕获源，并预览默认源。
- * @returns 刷新完成后的 Promise。
- */
-async function refreshSources(): Promise<void> {
-  try {
-    const sources = await getCaptureSources()
-    store.videoSources = sources
-    if (!sources.length) throw new Error('没有找到可录制的屏幕或窗口')
-    if (!sources.some((source) => source.id === store.selectedVideoSource)) {
-      store.selectedVideoSource =
-        sources.find((source) => source.id.startsWith('screen:'))?.id || sources[0].id
+onMounted(() => {
+  videoPreview.value.onloadedmetadata = (e) => videoPreview.value.play();
+  onRefreshClick();
+  document.addEventListener("visibilitychange", function () {
+    if (document.visibilityState === "visible") {
+      videoPreview.value.play();
+    } else if (document.visibilityState === "hidden") {
+      videoPreview.value.pause();
     }
-    await previewSource(store.selectedVideoSource)
-    lastPreviewedSource.value = store.selectedVideoSource
-  } catch (error) {
-    store.errorText = error instanceof Error ? error.message : String(error)
-  }
-}
+  });
+});
 
-/**
- * 创建指定源的预览媒体流。
- * @param sourceId 屏幕或窗口源 ID。
- * @param audioSources 需要申请的音频源；省略时使用当前设置。
- * @returns 预览完成后的 Promise。
- */
-async function previewSource(sourceId: string, audioSources = store.audioSources): Promise<void> {
-  const source = store.videoSources.find((item) => item.id === sourceId)
-  if (!source) return
-  const stream = await createCaptureStream(source, audioSources)
-  if (preview.value) {
-    preview.value.srcObject = stream
-    await preview.value.play().catch(() => undefined)
+const onRecBtnClick = () => {
+  if (getRecorderState() == "inactive") {
+    countDownTimer(
+      store.delayStart,
+      () => startRecord(videoPreview.value.srcObject),
+      (count) => {
+        countDown.value = count;
+      }
+    );
+  } else {
+    stopRecord();
   }
-}
+};
 
-/**
- * 处理录制源下拉选择变化。
- * @param sourceId 新选择的录制源 ID。
- * @returns 预览更新完成后的 Promise。
- */
-async function onSourceChange(sourceId: string): Promise<void> {
-  const previousSource = lastPreviewedSource.value
-  try {
-    await previewSource(sourceId)
-    lastPreviewedSource.value = sourceId
-  } catch (error) {
-    // 目标流创建失败时保留旧流和旧选择，避免界面指向不可用源。
-    if (previousSource) store.selectedVideoSource = previousSource
-    store.errorText = error instanceof Error ? error.message : String(error)
-  }
-}
-
-/**
- * 按当前设置开始或停止录制。
- * @returns 录制操作完成后的 Promise。
- */
-async function onRecordClick(): Promise<void> {
-  if (getRecorderState() !== 'inactive') {
-    await finishRecording()
-    return
+const onRecSysAudioClick = () => {
+  let idx = store.audioSources.findIndex((item) => item == "system");
+  if (idx !== -1) {
+    store.audioSources.splice(idx, 1);
+  } else {
+    store.audioSources.push("system");
   }
 
-  try {
-    store.errorText = ''
-    store.disableOperation = true
-    if (!getCurrentStream()) await refreshSources()
-    await runCountdown(store.delayStart, (remaining) => {
-      countdown.value = remaining
+  onAudioChange();
+};
+
+const onRecMicAudioClick = () => {
+  let idx = store.audioSources.findIndex((item) => item == "mic");
+  if (idx !== -1) {
+    store.audioSources.splice(idx, 1);
+  } else {
+    store.audioSources.push("mic");
+  }
+  onAudioChange();
+};
+
+const onDelayChange = (e) => {
+  let delay = parseInt(store.delayStart);
+  if (delay < 0 || isNaN(delay)) {
+    return;
+  }
+  utools?.dbStorage.setItem("delayStart", delay);
+};
+
+const onRefreshClick = () => {
+  getSources().then((sources) => {
+    if (!sources?.length) return;
+    store.videoSources = sources;
+    const mainScreenSource =
+      sources.find((source) => source.id == "screen:0:0")?.id || sources[0].id;
+    store.selectedVideoSource = { key: mainScreenSource };
+    handleSelectChange(store.selectedVideoSource); //TODO 改变后不调用change
+  });
+};
+
+const onAudioChange = () => {
+  console.log(store.audioSources);
+  utools?.dbStorage.setItem("audioSource", JSON.stringify(store.audioSources));
+  handleSelectChange(store.selectedVideoSource);
+};
+
+const onSettingClick = () => {
+  store.recentFilelist = mediaFile.getRecentFilelist();
+  store.settingVisable = true;
+};
+
+// const resizeWindow = () => {
+//   const height = document.getElementById("app")?.offsetHeight || 300
+//   height > 300 && utools?.setExpendHeight(height)
+// }
+
+const handleSelectChange = (value) => {
+  console.log(value);
+  const source = store.videoSources.filter(
+    (source) => source.id == value.key
+  )[0];
+  getStream(source)
+    .then((stream) => {
+      videoPreview.value.srcObject = stream;
+      setTimeout(() => {
+        // resizeWindow()
+        utools?.showMainWindow();
+      }, 500);
     })
-    countdown.value = 0
-    if (!getCurrentStream()) throw new Error('没有可用的录制源')
-    startRecording(store)
-    await recorderRuntime.lifecycle.hideMainWindow()
-  } catch (error) {
-    store.errorText = error instanceof Error ? error.message : String(error)
-    countdown.value = 0
-  } finally {
-    store.disableOperation = false
-  }
-}
+    .catch((err) => {
+      console.log("get stream:", err);
+    });
+};
 
-/**
- * 停止录制并按用户设置转换输出格式。
- * @returns 录制收尾完成后的 Promise。
- */
-async function finishRecording(): Promise<void> {
-  cancelCountdown()
-  countdown.value = 0
-  const filePath = await stopRecording(store)
-  if (!filePath) return
-
-  store.loading = store.outputFormat !== 'webm'
-  try {
-    const outputPath = await convertRecording(filePath, store.outputFormat)
-    recorderRuntime.shell.showItemInFolder(outputPath)
-    await recorderRuntime.shell.showToast(`录屏已保存：${outputPath}`)
-  } catch (error) {
-    store.errorText = error instanceof Error ? error.message : String(error)
-  } finally {
-    store.loading = false
-  }
-}
-
-/**
- * 切换录制暂停状态。
- * @returns 无返回值。
- */
-function togglePause(): void {
-  toggleRecordingPause()
-}
-
-/**
- * 使用系统文件管理器打开录制输出目录。
- * @returns 无返回值。
- */
-function openOutputDir(): void {
-  recorderRuntime.shell.openPath(recorderRuntime.files.getOutputDir())
-}
-
-/**
- * 切换麦克风录音，并重新创建预览流。
- * @param enabled 是否启用麦克风。
- * @returns 预览更新完成后的 Promise。
- */
-async function toggleMicrophone(enabled: boolean): Promise<void> {
-  await updateAudioSource('mic', enabled)
-}
-
-/**
- * 切换系统声音录音，并重新创建预览流。
- * @param enabled 是否启用系统声音。
- * @returns 预览更新完成后的 Promise。
- */
-async function toggleSystemAudio(enabled: boolean): Promise<void> {
-  if (!supportsSystemAudio.value) return
-  await updateAudioSource('system', enabled)
-}
-
-/**
- * 更新一种音频源的启用状态并持久化。
- * @param source 需要更新的音频源。
- * @param enabled 是否启用。
- * @returns 预览更新完成后的 Promise。
- */
-async function updateAudioSource(source: AudioSource, enabled: boolean): Promise<void> {
-  const next = store.audioSources.filter((item) => item !== source)
-  if (enabled) next.push(source)
-  if (store.selectedVideoSource) {
-    try {
-      await previewSource(store.selectedVideoSource, next)
-    } catch (error) {
-      store.errorText = error instanceof Error ? error.message : String(error)
-      return
-    }
-  }
-  store.audioSources = next
-  recorderRuntime.storage.set('audioSource', next)
-}
-
-/**
- * 保存开始录制前的延迟秒数。
- * @param value 新的延迟秒数。
- * @returns 无返回值。
- */
-function saveDelay(value: number | null): void {
-  if (value === null || !Number.isFinite(value)) return
-  recorderRuntime.storage.set('delayStart', value)
-}
-
-/**
- * 响应 ZTools 插件功能进入事件。
- * @param payload 插件功能进入参数。
- * @returns 操作完成后的 Promise。
- */
-async function onPluginEnter(payload: PluginEnterPayload): Promise<void> {
-  if (payload.code === 'start-recording') await onRecordClick()
-  else if (payload.code === 'stop-recording') await finishRecording()
-  else if (payload.code === 'toggle-pause') togglePause()
-}
-
-watch(
-  () => store.errorText,
-  (text) => {
-    if (!text) return
-    // 出现错误时立即停止录制，避免继续写入损坏文件。
-    void stopRecording(store).catch(() => undefined)
-  }
-)
-
-onMounted(async () => {
-  loadSettings()
-  await recorderRuntime.lifecycle.setSubInput('可绑定“开始录屏”“停止录屏”“暂停恢复录屏”')
-  await recorderRuntime.lifecycle.onEnter(onPluginEnter)
-  await refreshSources()
-})
-
-onBeforeUnmount(() => {
-  cancelCountdown()
-  void disposeRecorder(store)
-})
+// This starter template is using Vue 3 experimental <script setup> SFCs
+// Check out https://github.com/vuejs/rfcs/blob/master/active-rfcs/0040-script-setup.md
 </script>
 
-<style>
+<style lang="less">
 #app {
   font-family: Avenir, Helvetica, Arial, sans-serif;
   -webkit-font-smoothing: antialiased;
@@ -487,10 +406,6 @@ onBeforeUnmount(() => {
   justify-content: space-between;
 }
 
-.justify-end {
-  justify-content: flex-end;
-}
-
 .width-100 {
   width: 100%;
 }
@@ -520,21 +435,21 @@ onBeforeUnmount(() => {
   width: 20rem;
 }
 
-.full-modal .ant-modal {
-  max-width: 100%;
-  top: 0;
-  padding-bottom: 0;
-  margin: 0;
-}
-
-.full-modal .ant-modal-content {
-  display: flex;
-  flex-direction: column;
-  height: calc(100vh);
-}
-
-.full-modal .ant-modal-body {
-  flex: 1;
+.full-modal {
+  .ant-modal {
+    max-width: 100%;
+    top: 0;
+    padding-bottom: 0;
+    margin: 0;
+  }
+  .ant-modal-content {
+    display: flex;
+    flex-direction: column;
+    height: calc(100vh);
+  }
+  .ant-modal-body {
+    flex: 1;
+  }
 }
 
 .ant-spin {

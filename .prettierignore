@@ -4,3 +4,6 @@ pnpm-lock.yaml
 LICENSE.md
 tsconfig.json
 tsconfig.*.json
+# 录屏插件源码按原样移植自 DogeVenci/utools-recorder，保留上游格式便于同步
+plugins/recorder/src
+plugins/recorder/index.html

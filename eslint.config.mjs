@@ -13,7 +13,9 @@ export default defineConfig(
       'build/**',
       'resources/**',
       'ztools-api-types/**',
-      'ztools-plugin-cli/templates/**'
+      'ztools-plugin-cli/templates/**',
+      // 录屏插件源码按原样移植自 DogeVenci/utools-recorder，保持上游写法便于同步。
+      'plugins/recorder/src/**'
     ]
   },
   tseslint.configs.recommended,
