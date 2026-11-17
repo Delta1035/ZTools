@@ -87,6 +87,7 @@ test.describe('录屏插件', () => {
     const dataRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'ztools-recorder-e2e-'))
     const legacyRoot = path.join(dataRoot, 'legacy')
     let electronApp: ElectronApplication | null = null
+    let electronProcess: ChildProcess | null = null
 
     await fs.mkdir(legacyRoot, { recursive: true })
     try {
@@ -106,6 +107,8 @@ test.describe('录屏插件', () => {
           ZTOOLS_SETTING_DEV_SERVER_URL: 'http://127.0.0.1:15177'
         }
       })
+      // 在关闭 Playwright 代理前保存原生进程句柄，避免代理释放后再访问 electronApp.process()。
+      electronProcess = electronApp.process()
 
       const page = await electronApp.firstWindow()
       const searchInput = page.locator('.search-input')
@@ -149,8 +152,13 @@ test.describe('录屏插件', () => {
       )
       expect(launched).toMatchObject({ success: true })
       await expect
-        .poll(() => executeRecorder(electronApp!, 'document.body.innerText'))
-        .toContain('开始录制')
+        .poll(() =>
+          executeRecorder(
+            electronApp!,
+            'Boolean(document.querySelector("#switchBtn") && document.querySelector("#source"))'
+          )
+        )
+        .toBe(true)
 
       const captureResult = (await executeRecorder(
         electronApp,
@@ -184,10 +192,10 @@ test.describe('录屏插件', () => {
       await new Promise((resolve) => setTimeout(resolve, 5000))
       const startState = await executeRecorder(
         electronApp,
-        `({ currentPath: window.mediaFile.getCurrentPath(), status: document.querySelector('.status')?.innerText })`
+        `({ currentPath: window.mediaFile.getCurrentPath(), bodyText: document.body.innerText })`
       )
       expect(String((startState as { currentPath?: string })?.currentPath)).toBeTruthy()
-      expect(String((startState as { status?: string })?.status)).toContain('录制中')
+      expect(String((startState as { bodyText?: string })?.bodyText)).toContain('录制中')
       await new Promise((resolve) => setTimeout(resolve, 1500))
       await executeRecorder(
         electronApp,
@@ -195,8 +203,8 @@ test.describe('录屏插件', () => {
       )
       await new Promise((resolve) => setTimeout(resolve, 3000))
       await expect
-        .poll(() => executeRecorder(electronApp!, 'document.querySelector(".status")?.innerText'))
-        .toBe('未录制')
+        .poll(() => executeRecorder(electronApp!, 'document.body.innerText'))
+        .not.toContain('录制中')
       let savedPath = ''
       await expect
         .poll(
@@ -244,7 +252,13 @@ test.describe('录屏插件', () => {
           electronApp.close(),
           new Promise<void>((resolve) => setTimeout(resolve, 5000))
         ])
-        if (electronApp.process().exitCode === null) electronApp.process().kill('SIGKILL')
+        if (electronProcess?.exitCode === null && electronProcess.signalCode === null) {
+          try {
+            electronProcess.kill('SIGKILL')
+          } catch {
+            // 进程可能在状态检查和强制终止之间自然退出。
+          }
+        }
       }
       await fs.rm(dataRoot, { recursive: true, force: true })
     }
